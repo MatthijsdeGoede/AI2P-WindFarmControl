@@ -1,6 +1,9 @@
 import numpy as np
 from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
+import os
+
+import matplotlib.animation as animation
 
 
 def import_vtk(file):
@@ -99,6 +102,36 @@ def vtk_to_umean_abs(file):
     return umean_abs, x_axis, y_axis
 
 
+def animate_mean_absolute_speed(start, frames=None):
+    if frames is None:
+        all_files = os.listdir('./slices/BL/')
+        biggest_file = int(max(all_files, key=lambda x: int(x.split('.')[0])))
+        frames = (biggest_file - start)//5
+        print(frames)
+    umean_abs, x_axis, y_axis = vtk_to_umean_abs(
+        f'./slices/BL/{start}/U_slice_horizontal.vtk')
+
+    fig, ax = plt.subplots()
+    axesImage = ax.imshow(umean_abs, animated=True)
+    fig.colorbar(axesImage, ax=ax)
+    ax.set_xlabel("X-axis")
+    ax.set_ylabel("Y-axis")
+    ax.set_title(f"Interpolated UmeanAbs at Hub-Height")
+    time_stamp = ax.text(0.5, 0.85, "", bbox={'facecolor':'w', 'alpha':0.5, 'pad':5},
+                transform=ax.transAxes, ha="center")
+    def animate(i):
+        umean_abs, x_axis, y_axis = vtk_to_umean_abs(
+            f'./slices/BL/{start + 5 * i}/U_slice_horizontal.vtk')
+        axesImage.set_data(umean_abs)
+        time_stamp.set_text(f't = {5 * i} minutes')
+        print(f'Completed slice #{start + 5 * i}')
+        return axesImage, time_stamp
+
+    anim = animation.FuncAnimation(fig=fig, func=animate, frames=frames, interval=100, blit=True)
+    os.makedirs(f'./animations/{start}', exist_ok=True)
+    anim.save(f'./animations/{start}/{frames}.gif', writer='imagemagick')
+
+
 def plot_mean_absolute_speed(umean_abs, x_axis, y_axis):
     """"
     Plots the mean absolute wind speed over the given grid
@@ -115,6 +148,8 @@ def plot_mean_absolute_speed(umean_abs, x_axis, y_axis):
     plt.show()
 
 
-umean_abs, x_axis, y_axis = vtk_to_umean_abs(
-    '../measurements_flow/postProcessing_BL/sliceDataInstantaneous/30890/U_slice_horizontal.vtk')
-plot_mean_absolute_speed(umean_abs, x_axis, y_axis)
+if __name__ == "__main__":
+    animate_mean_absolute_speed(30005, frames=500)
+    # umean_abs, x_axis, y_axis = vtk_to_umean_abs(
+    #     '../measurements_flow/postProcessing_BL/sliceDataInstantaneous/30890/U_slice_horizontal.vtk')
+    # plot_mean_absolute_speed(umean_abs, x_axis, y_axis)
