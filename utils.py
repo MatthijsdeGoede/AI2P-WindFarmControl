@@ -103,44 +103,45 @@ def vtk_to_umean_abs(file):
 
 
 def get_file_name(type, i):
-    return f'./slices/Processed/{type}/Windspeed_map_scalars_{i}.npy'
+    if type == 'BL':
+        return f'./slices/Processed/{type}/Windspeed_map_scalars_{i}.npy'
+    return f'./slices/{type}/Windspeed_map_scalars_{i}.npy'
 
 
 def animate_mean_absolute_speed(start, frames=None):
     if frames is None:
         all_files = os.listdir('./slices/Processed/BL/')
-        biggest_file = int(max(all_files, key=lambda x: int(x.split('.')[0].split('_')[-1])))
-        frames = (biggest_file - start)//5
+        biggest_file = int(max(all_files, key=lambda x: int(x.split('.')[0].split('_')[-1])).split('.')[0].split('_')[-1])
+        frames = (biggest_file - start)//5 + 1
         print(frames)
-    umean_abs_1 = np.load(get_file_name("BL", start))
-    umean_abs_2 = np.load(get_file_name("BL", start))
 
-    fig, (ax1, ax2) = plt.subplots(1, 2)
+    images = []
 
-    def setup_image(ax, umean):
-        axesImage = ax.imshow(umean, animated=True)
-        ax.set_xlabel("X-axis")
-        ax.set_ylabel("Y-axis")
-        return axesImage
+    def setup_image(ax, type):
+        umean = np.load(get_file_name(type, start))
+        axes_image = ax.imshow(umean, animated=True)
+        ax.set_xlabel("Distance (m)")
+        ax.set_ylabel("Distance (m)")
+        images.append((axes_image, type))
 
-    axes_image_1 = setup_image(ax1, umean_abs_1)
-    axes_image_2 = setup_image(ax2, umean_abs_2)
+    fig, (ax1) = plt.subplots(1, 1)
+
+    setup_image(ax1, "BL")
+    # setup_image(ax2, "LuT2deg")
     # fig.colorbar(axes_image_1)
 
     def animate(i):
         fig.suptitle(f"Interpolated UmeanAbs at Hub-Height\nt = {5 * i} seconds")
 
-        umean_abs = np.load(get_file_name("BL", start + 5 * i))
-        axes_image_1.set_data(umean_abs)
+        for axes_image, type in images:
+            umean_abs = np.load(get_file_name(type, start + 5 * i))
+            axes_image.set_data(umean_abs)
+        return fig, *images
 
-        umean_abs = np.load(get_file_name("BL", start + 5 * i))
-        axes_image_2.set_data(umean_abs)
-        print(f'Completed slice #{start + 5 * i}')
-        return fig, axes_image_1, axes_image_2
-
-    anim = animation.FuncAnimation(fig=fig, func=animate, frames=frames, interval=100)
+    anim = animation.FuncAnimation(fig=fig, func=animate, frames=frames, interval=50)
     os.makedirs(f'./animations/{start}', exist_ok=True)
-    anim.save(f'./animations/{start}/{frames}.gif', writer='pillow')
+    progress_callback = lambda i, n: print(f'Saving frame {i}/{n}, slice {start + 5 * i}')
+    anim.save(f'./animations/{start}/{frames}.gif', writer='pillow', progress_callback=progress_callback)
 
 
 def plot_mean_absolute_speed(umean_abs, x_axis, y_axis):
@@ -160,7 +161,7 @@ def plot_mean_absolute_speed(umean_abs, x_axis, y_axis):
 
 
 if __name__ == "__main__":
-    animate_mean_absolute_speed(30005, frames=50)
+    animate_mean_absolute_speed(30005)
     # umean_abs, x_axis, y_axis = vtk_to_umean_abs(
     #     '../measurements_flow/postProcessing_BL/sliceDataInstantaneous/30890/U_slice_horizontal.vtk')
     # plot_mean_absolute_speed(umean_abs, x_axis, y_axis)
