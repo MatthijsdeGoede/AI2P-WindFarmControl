@@ -140,7 +140,7 @@ def animate_mean_absolute_speed(start, frames=None):
 
     anim = animation.FuncAnimation(fig=fig, func=animate, frames=frames, interval=100)
     os.makedirs(f'./animations/{start}', exist_ok=True)
-    anim.save(f'./animations/{start}/{frames}.gif', writer='imagemagick')
+    anim.save(f'./animations/{start}/{frames}.gif', writer='pillow')
 
 
 def plot_mean_absolute_speed(umean_abs, x_axis, y_axis):
