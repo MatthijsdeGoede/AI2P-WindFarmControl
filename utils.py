@@ -6,9 +6,6 @@ import matplotlib.animation as animation
 
 from numpy.linalg import norm
 from scipy.interpolate import griddata
-import os
-
-import matplotlib.animation as animation
 
 
 def import_vtk(file):
@@ -107,27 +104,40 @@ def vtk_to_umean_abs(file):
     return umean_abs, x_axis, y_axis
 
 
-def get_file_name(type, i):
-    if type == 'BL':
-        return f'./slices/Processed/{type}/Windspeed_map_scalars_{i}.npy'
-    return f'./slices/{type}/Windspeed_map_scalars_{i}.npy'
+def get_data_from_file(type, i, name, case):
+    if type == 'BL' or type == "LuT2deg":
+        # BL is already precomputed, just use that, otherwise use the new data
+        return np.load(f'./slices/{case}/Processed/{type}/Windspeed_map_scalars_{i}.npy')
+
+    umean_abs, _, _ = vtk_to_umean_abs(
+        f'./slices/{case}/{type}/{i}/{name}')
+    return umean_abs
 
 
-def animate_mean_absolute_speed(start, frames=None):
+def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case_1"):
+    """
+    Creates an animation of one or two wind speed maps over time, in 5 second increments. Uses the preprocessed data.
+    Data is expected to be located in ./slices/Processed/BL/*_xxxxx.npy files, and contain the precomputed mean
+    absolute wind speed. xxxxx denotes the timestamp of the wind speed measurement in seconds.
+    @param start: Start timestamp to render from.
+    @param frames: Amount of frames to render, leave empty to render till the end.
+    @param comparison: Change to True if you want to create two plots, one with wake steering and one without.
+    """
     if frames is None:
-        all_files = os.listdir('./slices/Processed/BL/')
-        biggest_file = int(max(all_files, key=lambda x: int(x.split('.')[0].split('_')[-1])).split('.')[0].split('_')[-1])
-        frames = (biggest_file - start) // 5 + 1
+        dirs = os.listdir(f'./slices/{case}/Processed')
+        all_files = [os.listdir(f'./slices/{case}/Processed/{dir}') for dir in dirs]
+        biggest_file = [int(max(files, key=lambda x: int(x.split('.')[0].split('_')[-1])).split('.')[0].split('_')[-1]) for files in all_files]
+        frames = (min(biggest_file) - start)//5 + 1
         print(frames)
 
     images = []
 
-    def setup_image(ax, type):
-        umean = np.load(get_file_name(type, start))
+    def setup_image(ax, type, name="U_slice_horizontal.vtk"):
+        umean = get_data_from_file(type, start, name, case)
         axes_image = ax.imshow(umean, animated=True)
         ax.set_xlabel("Distance (m)")
         ax.set_ylabel("Distance (m)")
-        images.append((axes_image, type))
+        images.append((axes_image, type, name))
 
     fig, (ax1) = plt.subplots(1, 1)
 
@@ -135,22 +145,32 @@ def animate_mean_absolute_speed(start, frames=None):
 
     # setup_image(ax2, "LuT2deg")
     # fig.colorbar(axes_image_1)
+    if comparison:
+        fig, (ax1, ax2) = plt.subplots(1, 2)
+        setup_image(ax1, "BL")
+        ax1.set_title("Greedy Controller")
+        setup_image(ax2, "LuT2deg")
+        ax2.set_title("Wake Steering")
+    else:
+        fig, (ax1) = plt.subplots(1, 1)
+        setup_image(ax1, "BL")
+        fig.colorbar(images[0][0], ax=ax1)
 
     def animate(i):
-        fig.suptitle(f"Interpolated UmeanAbs at Hub-Height\nt = {5 * i} seconds")
+        # fig.suptitle(f"Interpolated UmeanAbs at Hub-Height\nRuntime of simulation: {5 * i} seconds")
 
-        for axes_image, type in images:
-            umean_abs = np.load(get_file_name(type, start + 5 * i))
+        for axes_image, type, name in images:
+            umean_abs = get_data_from_file(type, start + 5 * i, name, case)
             axes_image.set_data(umean_abs)
         return fig, *images
 
     anim = animation.FuncAnimation(fig=fig, func=animate, frames=frames, interval=50)
-    os.makedirs(f'./animations/{start}', exist_ok=True)
+    os.makedirs(f'./animations/{case}/{start}', exist_ok=True)
     progress_callback = lambda i, n: print(f'Saving frame {i}/{n}, slice {start + 5 * i}')
-    anim.save(f'./animations/{start}/{frames}.gif', writer='pillow', progress_callback=progress_callback)
+    anim.save(f'./animations/{case}/{start}/{frames}.gif', writer='pillow', progress_callback=progress_callback)
 
 
-def plot_mean_absolute_speed(umean_abs, x_axis, y_axis):
+def plot_mean_absolute_speed(umean_abs):
     """"
     Plots the mean absolute wind speed over the given grid
     inputs:
@@ -158,7 +178,7 @@ def plot_mean_absolute_speed(umean_abs, x_axis, y_axis):
     x_axis = x value range of the grid
     y_axis = y value range of the grid
     """
-    plt.imshow(umean_abs, extent=(x_axis[0], x_axis[-1], y_axis[0], y_axis[-1]), origin='lower', aspect='auto')
+    plt.imshow(umean_abs, origin='lower', aspect='auto')
     plt.colorbar(label='Mean Velocity (UmeanAbs)')
     plt.xlabel('X-axis')
     plt.ylabel('Y-axis')
@@ -241,15 +261,16 @@ def calculate_wake_distances(turb_vec, wind_vec, angle=None):
 
 
 if __name__ == "__main__":
-    wind_angles = read_wind_angles("HKN_12_to_15_dir.csv")
-    turbine_pos = read_turbine_positions("HKN_12_to_15_layout_balanced.csv")
-    timestep = 1310
-    max_angle = 90
-    wind_vec = get_wind_vec_at_time(wind_angles, timestep)
-    graph = create_turbine_graph(turbine_pos, wind_vec, max_angle=max_angle)
-    plot_graph(graph, wind_vec, max_angle=max_angle)
+    # wind_angles = read_wind_angles("HKN_12_to_15_dir.csv")
+    # turbine_pos = read_turbine_positions("HKN_12_to_15_layout_balanced.csv")
+    # timestep = 1310
+    # max_angle = 90
+    # wind_vec = get_wind_vec_at_time(wind_angles, timestep)
+    # graph = create_turbine_graph(turbine_pos, wind_vec, max_angle=max_angle)
+    # plot_graph(graph, wind_vec, max_angle=max_angle)
 
     # animate_mean_absolute_speed(30005)
     # umean_abs, x_axis, y_axis = vtk_to_umean_abs(
     #     '../measurements_flow/postProcessing_BL/sliceDataInstantaneous/30890/U_slice_horizontal.vtk')
     # plot_mean_absolute_speed(umean_abs, x_axis, y_axis)
+    animate_mean_absolute_speed(30005, comparison=False, case="Case_3")
