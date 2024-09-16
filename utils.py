@@ -104,14 +104,8 @@ def vtk_to_umean_abs(file):
     return umean_abs, x_axis, y_axis
 
 
-def get_data_from_file(type, i, name, case):
-    if type == 'BL' or type == "LuT2deg":
-        # BL is already precomputed, just use that, otherwise use the new data
-        return np.load(f'./slices/{case}/Processed/{type}/Windspeed_map_scalars_{i}.npy')
-
-    umean_abs, _, _ = vtk_to_umean_abs(
-        f'./slices/{case}/{type}/{i}/{name}')
-    return umean_abs
+def get_data_from_file(type, i, case):
+    return np.load(f'./slices/{case}/Processed/{type}/Windspeed_map_scalars_{i}.npy')
 
 
 def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case_1"):
@@ -132,12 +126,12 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
 
     images = []
 
-    def setup_image(ax, type, name="U_slice_horizontal.vtk"):
-        umean = get_data_from_file(type, start, name, case)
+    def setup_image(ax, type):
+        umean = get_data_from_file(type, start, case)
         axes_image = ax.imshow(umean, animated=True)
         ax.set_xlabel("Distance (m)")
         ax.set_ylabel("Distance (m)")
-        images.append((axes_image, type, name))
+        images.append((axes_image, type))
 
     fig, (ax1) = plt.subplots(1, 1)
 
@@ -159,8 +153,8 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
     def animate(i):
         # fig.suptitle(f"Interpolated UmeanAbs at Hub-Height\nRuntime of simulation: {5 * i} seconds")
 
-        for axes_image, type, name in images:
-            umean_abs = get_data_from_file(type, start + 5 * i, name, case)
+        for axes_image, type in images:
+            umean_abs = get_data_from_file(type, start + 5 * i, case)
             axes_image.set_data(umean_abs)
         return fig, *images
 
@@ -273,4 +267,4 @@ if __name__ == "__main__":
     # umean_abs, x_axis, y_axis = vtk_to_umean_abs(
     #     '../measurements_flow/postProcessing_BL/sliceDataInstantaneous/30890/U_slice_horizontal.vtk')
     # plot_mean_absolute_speed(umean_abs, x_axis, y_axis)
-    animate_mean_absolute_speed(30005, comparison=False, case="Case_3")
+    animate_mean_absolute_speed(30005, comparison=True, case="Case_1")
