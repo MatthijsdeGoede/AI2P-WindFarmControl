@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 
-from sim_to_speed_map.nets.mlp import MLP
-from sim_to_speed_map.nets.pign import PIGN
+from architecture.nets.mlp import MLP
+from architecture.nets.pign import PIGN
 
 
 class PowerPIGNN(nn.Module):
