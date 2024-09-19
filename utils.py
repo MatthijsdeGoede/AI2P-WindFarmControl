@@ -166,7 +166,7 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
     anim.save(f'./animations/{case}/{start}/{frames}.gif', writer='pillow', progress_callback=progress_callback)
 
 
-def plot_mean_absolute_speed(umean_abs, x_axis, y_axis, G, wind_vec):
+def plot_mean_absolute_speed(umean_abs, x_axis, y_axis, G, wind_vec, layout_file):
     """"
     Plots the mean absolute wind speed over the given grid
     inputs:
@@ -190,21 +190,21 @@ def plot_mean_absolute_speed(umean_abs, x_axis, y_axis, G, wind_vec):
     scaled_wind_vec = 1000 * wind_vec
 
     # Create windmill layout
-    df = pd.read_csv("./slices/Case_1/HKN_12_to_15_layout_balanced.csv", sep=",", header=None)
+    df = pd.read_csv(layout_file, sep=",", header=None)
 
-    angle = np.deg2rad(-10)
+    angle = np.deg2rad(0)
     R = np.array([[np.cos(angle), -np.sin(angle)],
                   [np.sin(angle), np.cos(angle)]])
-    o = np.array([[wind_start[0], wind_start[1]]])
+    o = np.array([[(x_axis[-1] - x_axis[0] ) / 2, (y_axis[-1] - y_axis[0])/2]])
 
     # Remove z component
     p = df.values[:, :2]
     rotated_windmills = np.squeeze((R @ (p.T - o.T) + o.T).T)
 
     for i, (x, y) in enumerate(rotated_windmills):
-        circ = Circle((y, y_axis[-1] - x), 100, color='red')
+        circ = Circle((x, y), 100, color='red')
         ax.add_patch(circ)
-        ax.text(y, y_axis[-1] - x, f'{i}', ha='center', va='center')
+        ax.text(x, y, f'{i}', ha='center', va='center')
 
     p = np.array([[scaled_wind_vec[0], scaled_wind_vec[1]]])
     o = np.array([[0, 0]])
@@ -226,7 +226,7 @@ def read_wind_angles(file):
 
 
 def get_wind_vec_at_time(wind_angles, timestep):
-    return angle_to_vec(wind_angles[wind_angles[:, 0] < timestep][-1, 1])
+    return -1 * angle_to_vec(wind_angles[wind_angles[:, 0] < timestep][-1, 1])
 
 
 def read_turbine_positions(file):
@@ -291,9 +291,12 @@ def calculate_wake_distances(turb_vec, wind_vec, angle=None):
 
 
 if __name__ == "__main__":
-    wind_angles = read_wind_angles("./slices/Case_1/HKN_12_to_15_dir.csv")
-    turbine_pos = read_turbine_positions("./slices/Case_1/HKN_12_to_15_layout_balanced.csv")
-    timestep = 1310
+    case = 1
+    turbines = "12_to_15" if case == 1 else "06_to_09" if case == 2 else "00_to_03"
+    layout_file = f"./slices/Case_{case}/HKN_{turbines}_layout_balanced.csv"
+    wind_angles = read_wind_angles(f"./slices/Case_{case}/HKN_{turbines}_dir.csv")
+    turbine_pos = read_turbine_positions(layout_file)
+    timestep = 505
     max_angle = 90
     wind_vec = get_wind_vec_at_time(wind_angles, timestep)
     graph = create_turbine_graph(turbine_pos, wind_vec, max_angle=max_angle)
@@ -301,6 +304,6 @@ if __name__ == "__main__":
 
     # animate_mean_absolute_speed(30005)
     umean_abs, x_axis, y_axis = vtk_to_umean_abs(
-        './slices/Case_1/BL/30505/U_slice_horizontal.vtk')
-    plot_mean_absolute_speed(umean_abs, x_axis, y_axis, graph, wind_vec)
+        f'./slices/Case_{case}/BL/{30000 + timestep}/U_slice_horizontal.vtk')
+    plot_mean_absolute_speed(umean_abs, x_axis, y_axis, graph, wind_vec, layout_file)
     # animate_mean_absolute_speed(30005, comparison=True, case="Case_1")
