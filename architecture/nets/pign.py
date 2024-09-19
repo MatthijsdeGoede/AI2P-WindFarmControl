@@ -1,9 +1,7 @@
-from functools import partial
 
-import dgl
-import dgl.function as dgl_fn
 import torch
 import torch.nn as nn
+from torch_geometric.nn import MessagePassing, global_mean_pool
 
 
 class Normalizer(nn.Module):
@@ -105,7 +103,7 @@ class PhysicsInducedAttention(nn.Module):
         return interacting_coeiff
 
 
-class PIGN(nn.Module):
+class PIGN(MessagePassing):
     """
     Pytorch-DGL implementation of the physics-induced Graph Network Layer
     "https://www.sciencedirect.com/science/article/pii/S0360544219315555"
@@ -116,93 +114,65 @@ class PIGN(nn.Module):
                  node_model: nn.Module,
                  global_model: nn.Module,
                  residual: bool,
-                 use_attention: bool,
-                 edge_aggregator: str = 'mean',
-                 global_node_aggr: str = 'mean',
-                 global_edge_aggr: str = 'mean'):
+                 use_attention: bool):
         super(PIGN, self).__init__()
 
-        # trainable models
+        self.global_features = None
         self.edge_model = edge_model
         self.node_model = node_model
         self.global_model = global_model
         if use_attention:
             self.attention_model = PhysicsInducedAttention(use_approx=False)
 
-        # residual hook
         self.residual = residual
         self.use_attention = use_attention
 
-        # aggregators
-        self.edge_aggr = getattr(dgl_fn, edge_aggregator)('m', 'agg_m')
-        self.global_node_aggr = global_node_aggr
-        self.global_edge_aggr = global_edge_aggr
+    def forward(self, node_feat, edge_feat, glob_feat, edge_idx):
+        self.global_features = glob_feat.unsqueeze(-1)
+        
+        # Use the learned functions to update the node and edge features
+        # TODO: check how to repeat the global features correctly.
+        repeated_gf = self.global_features.repeat_interleave(edge_feat.shape[0], dim=0).reshape(edge_feat.shape[0], -1)
+        updated_ef = self.edge_update(node_feat, edge_feat, repeated_gf, edge_idx)
+        updated_nf = self.propagate(edge_idx, x=node_feat, edge_attr=edge_feat)
 
-    def forward(self, g, nf, ef, u):
-        """
-        :param g: graphs
-        :param nf: node features
-        :param ef: edge features
-        :param u: global features
-        :return:
+        # Average the node and edge features across the neighbourhoods
+        node_readout = global_mean_pool(updated_nf, batch=torch.zeros(updated_nf.size(0), dtype=torch.long,
+                                                                      device=updated_nf.device))
+        edge_readout = global_mean_pool(updated_ef, batch=torch.zeros(updated_ef.size(0), dtype=torch.long,
+                                                                      device=updated_ef.device))
 
-        """
-        with g.local_scope():
-            g.ndata['_h'] = nf
-            g.edata['_h'] = ef
+        # Update the global features using the aggregated node and edge features and the learned function
+        global_input = torch.cat([node_readout, edge_readout, glob_feat], dim=-1)
+        updated_gf = self.global_model(global_input)
 
-            # update edges
-            repeated_us = u.repeat_interleave(g.batch_num_edges(), dim=0)
-            edge_update = partial(self.edge_update, repeated_us=repeated_us)
-            g.apply_edges(func=edge_update)
+        #  Add the output to its input to preserve information improving gradient flow during training
+        if self.residual:
+            updated_nf = updated_nf + node_feat
+            updated_ef = updated_ef + edge_feat
+            updated_gf = updated_gf + glob_feat
 
-            # update nodes
-            repeated_us = u.repeat_interleave(g.batch_num_nodes(), dim=0)
-            node_update = partial(self.node_update, repeated_us=repeated_us)
-            g.pull(g.nodes(),
-                   message_func=dgl_fn.copy_e('m', 'm'),
-                   reduce_func=self.edge_aggr,
-                   apply_node_func=node_update)
+        return updated_nf, updated_ef, updated_gf
 
-            # update global features
-            node_readout = dgl.readout_nodes(g, 'uh', op=self.global_node_aggr)
-            edge_readout = dgl.readout_edges(g, 'uh', op=self.global_edge_aggr)
-            gm_input = torch.cat([node_readout, edge_readout, u], dim=-1)
-            updated_u = self.global_model(gm_input)
 
-            updated_nf = g.ndata['uh']
-            updated_ef = g.edata['uh']
-
-            if self.residual:
-                updated_nf = updated_nf + nf
-                updated_ef = updated_ef + ef
-                updated_u = updated_u + u
-
-            return updated_nf, updated_ef, updated_u
-
-    def edge_update(self, edges, repeated_us):
-        sender_nf = edges.src['_h']
-        receiver_nf = edges.dst['_h']
-        ef = edges.data['_h']
-
-        # update edge features
-        em_input = torch.cat([sender_nf, receiver_nf, ef, repeated_us], dim=-1)
-        e_updated = self.edge_model(em_input)
+    def edge_update(self, node_feat, edge_feat, glob_feat, edge_idx):
+        src, dst = edge_idx
+        model_input = torch.cat([node_feat[src], node_feat[dst], edge_feat, glob_feat], dim=-1)
+        updated_edge_attr = self.edge_model(model_input)
 
         if self.use_attention:
-            # compute edge weights
-            dd = edges.data['down_stream_dist']
-            rd = edges.data['radial_dist']
-            attn_input = torch.cat([dd, rd], dim=-1)
+            radial_dist = edge_feat[:, 0]
+            down_stream_dist = edge_feat[:, 1]
+            attn_input = torch.cat([down_stream_dist, radial_dist], dim=-1)
             weights = self.attention_model(attn_input)
-            updated_ef = weights * e_updated
-        else:
-            updated_ef = e_updated
-        return {'m': updated_ef, 'uh': updated_ef}
+            updated_edge_attr = weights.unsqueeze(-1) * updated_edge_attr
 
-    def node_update(self, nodes, repeated_us):
-        agg_m = nodes.data['agg_m']
-        nf = nodes.data['_h']
-        nm_input = torch.cat([agg_m, nf, repeated_us], dim=-1)
-        updated_nf = self.node_model(nm_input)
-        return {'uh': updated_nf}
+        return updated_edge_attr
+
+    def message(self, x_j, edge_feat):
+        # TODO: check how to repeat the global features correctly.
+        repeated_gf = self.global_features.repeat_interleave(x_j.shape[0], dim=0)
+        return torch.cat([x_j, edge_feat, repeated_gf], dim=-1)
+
+    def update(self, aggr_out):
+        return self.node_model(aggr_out)

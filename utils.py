@@ -4,6 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import pandas as pd
+import torch
+from torch_geometric.data import Data
 
 from matplotlib.patches import Circle
 from numpy.linalg import norm
@@ -181,63 +183,18 @@ def plot_mean_absolute_speed(umean_abs, x_axis, y_axis, G, wind_vec):
     plt.ylabel('Y-axis')
     plt.title('Interpolated UmeanAbs at Hub-Height')
     print(y_axis[-1])
-    df = pd.read_csv("./slices/Case_1/HKN_12_to_15_layout_balanced.csv", sep=",", header=None)
+    df = pd.read_csv("../data/Case_01/HKN_12_to_15_layout_balanced.csv", sep=",", header=None)
     print(df.values)
     for i, (x, y, z) in enumerate(df.values):
-        circ = Circle((y, y_axis[-1] - x), 100, color='red')
+        circ = Circle((y, x_axis[-1] - x), 100, color='red')
         ax.add_patch(circ)
-        ax.text(y, y_axis[-1] - x, f'{i}', ha='center', va='center')
+        ax.text(y, x_axis[-1] - x, f'{i}', ha='center', va='center')
     pos_dict = nx.get_node_attributes(G, 'pos')
     wind_start = np.mean(np.array(list(pos_dict.values())), axis=0)
     scaled_wind_vec = 1000 * wind_vec
     plt.quiver(wind_start[0], wind_start[1], scaled_wind_vec[0], scaled_wind_vec[1],
                angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
     plt.show()
-
-
-def angle_to_vec(wind_angle):
-    angle_radians = np.deg2rad(wind_angle)
-    return np.array([np.cos(angle_radians), np.sin(angle_radians)])
-
-
-def read_wind_angles(file):
-    return np.genfromtxt(file, delimiter=",")
-
-
-def get_wind_vec_at_time(wind_angles, timestep):
-    return angle_to_vec(wind_angles[wind_angles[:, 0] < timestep][-1, 1])
-
-
-def get_wind_angles_for_range(file, custom_range):
-    wind_angles = read_wind_angles(file)
-    return np.array([wind_angles[wind_angles[:, 0] < timestep][-1, 1] for timestep in custom_range])
-
-
-def read_turbine_positions(file):
-    return np.genfromtxt(file, delimiter=",")[:, :2]
-
-
-def get_angle_between_vec(v1, v2):
-    return np.degrees(np.arccos(np.clip(np.dot(v1, v2) / (norm(v1) * norm(v2)), -1.0, 1.0)))
-
-
-def create_turbine_graph(pos, wind_vec, max_angle=90, max_dist=np.inf):
-    G = nx.DiGraph()
-    num_turbines = pos.shape[0]
-    for i in range(num_turbines):
-        G.add_node(i, pos=pos[i])
-
-    for i in range(num_turbines):
-        for j in range(num_turbines):
-            if i != j:
-                turb_vec = pos[j, :] - pos[i, :]
-                angle = get_angle_between_vec(turb_vec, wind_vec)
-                dist = norm(turb_vec)
-                if dist < max_dist and angle < max_angle:
-                    # add edge i to j
-                    edge_feat = calculate_wake_distances(turb_vec, wind_vec, angle=angle)
-                    G.add_edge(i, j, edge_feat=edge_feat)
-    return G
 
 
 def plot_graph(G, wind_vec, max_angle=90):
@@ -263,10 +220,73 @@ def plot_graph(G, wind_vec, max_angle=90):
     plt.show()
 
 
+def angle_to_vec(wind_angle):
+    angle_radians = np.deg2rad(wind_angle)
+    return np.array([np.cos(angle_radians), np.sin(angle_radians)])
+
+
+def read_wind_angles(file):
+    return np.genfromtxt(file, delimiter=",")
+
+
+def get_wind_vec_at_time(wind_angles, timestep):
+    return angle_to_vec(wind_angles[wind_angles[:, 0] < timestep][-1, 1])
+
+
+def get_wind_angles_for_range(file, custom_range, start_ts):
+    wind_angles = read_wind_angles(file)
+    return np.array([wind_angles[wind_angles[:, 0] < timestep - start_ts][-1, 1] for timestep in custom_range])
+
+
+def read_turbine_positions(file):
+    return np.genfromtxt(file, delimiter=",")[:, :2]
+
+
+def get_angle_between_vec(v1, v2):
+    return np.degrees(np.arccos(np.clip(np.dot(v1, v2) / (norm(v1) * norm(v2)), -1.0, 1.0)))
+
+
+def create_turbine_nx_graph(pos, wind_vec, max_angle=90, max_dist=np.inf):
+    G = nx.DiGraph()
+    num_turbines = pos.shape[0]
+    for i in range(num_turbines):
+        G.add_node(i, pos=pos[i])
+
+    for i in range(num_turbines):
+        for j in range(num_turbines):
+            if i != j:
+                turb_vec = pos[j, :] - pos[i, :]
+                angle = get_angle_between_vec(turb_vec, wind_vec)
+                dist = norm(turb_vec)
+                if dist < max_dist and angle < max_angle:
+                    # add edge i to j
+                    edge_feat = calculate_wake_distances(turb_vec, wind_vec, angle=angle)
+                    G.add_edge(i, j, edge_feat=edge_feat)
+    return G
+
+
+def create_turbine_graph_tensors(pos, wind_vec, max_angle=90, max_dist=np.inf):
+    num_turbines = pos.shape[0]
+    src_nodes = []
+    dst_nodes = []
+    edge_feats = []
+    for i in range(num_turbines):
+        for j in range(num_turbines):
+            if i != j:
+                turb_vec = pos[j, :] - pos[i, :]
+                angle = get_angle_between_vec(turb_vec, wind_vec)
+                dist = norm(turb_vec)
+                if dist < max_dist and angle < max_angle:
+                    src_nodes.append(i)
+                    dst_nodes.append(j)
+                    feats = calculate_wake_distances(turb_vec, wind_vec, angle=angle)
+                    edge_feats.append([feats[0], feats[1]])
+    return torch.tensor([src_nodes, dst_nodes]), torch.tensor(edge_feats)
+
+
 def calculate_wake_distances(turb_vec, wind_vec, angle=None):
     if angle is None:
         angle = get_angle_between_vec(turb_vec, wind_vec)
-
     angle_rad = np.deg2rad(angle)
     dist_i_j = norm(turb_vec)
     rad_dist = dist_i_j * np.sin(angle_rad)
@@ -282,23 +302,18 @@ def read_measurement(folder, measurement):
         "Feature": float
     }
     file_path = os.path.join(folder, measurement)
-    df = pd.read_csv(file_path, sep="\s+", header=1, names=["Turbine", "Time", "dt", "Measurement"], dtype=dtypes)
-    df = df[(df["Time"] % 5 == 0) & (df["Time"] > 30000)]
-    df = df.astype({'Time': 'int32'})
+    df = pd.read_csv(file_path, sep=" ", header=1, names=["Turbine", "Time", "dt", "Measurement"], dtype=dtypes)
+    df = df.loc[(df["Time"] % 5 == 0) & (df["Time"] > 30000), ["Turbine", "Time", "Measurement"]]
+    df["Time"] = df["Time"].astype('int32')
     pivot_df = df.pivot(index="Turbine", columns="Time", values="Measurement")
     return pivot_df.to_numpy()
 
 
-def read_windspeed_maps(flow_data_dir, ts_range):
-    # Load and stack windspeed maps for each timestep in the specified range
-    speed_maps = [np.load(f"{flow_data_dir}/Windspeed_map_scalars/Windspeed_map_scalars_{ts}.npy") for ts in ts_range]
-    return np.stack(speed_maps, axis=0).reshape(-1, len(speed_maps))
-
-
-def prepare_training_data():
+def prepare_graph_training_data():
     case_nr = 1
     wake_steering = False
     post_fix = "LuT2deg_internal" if wake_steering else "BL"
+    start_ts = 30000
     min_ts = 30005
     max_ts = 42000
     step = 5
@@ -308,39 +323,44 @@ def prepare_training_data():
     data_dir = f"../data/Case_0{case_nr}"
     flow_data_dir = f"{data_dir}/measurements_flow/postProcessing_{post_fix}"
     turbine_data_dir = f"{data_dir}/measurements_turbines/30000_{post_fix}"
+    output_dir = f"{data_dir}/graphs"
 
     layout_file = f"{data_dir}/HKN_12_to_15_layout_balanced.csv"
     wind_angle_file = f"{data_dir}/HKN_12_to_15_dir.csv"
 
     # Get the wind angles (global features) for every timestep in the simulation
-    wind_angles = get_wind_angles_for_range(wind_angle_file, data_range)  # (2400x1)
+    wind_angles = get_wind_angles_for_range(wind_angle_file, data_range, start_ts)  # (2400)
 
     # Get the features for every wind turbine (node features)
-    turbine_pos = read_turbine_positions(layout_file)  # (10x2)
-    wind_speeds = np.load(f"{flow_data_dir}/windspeed_estimation_case_0{case_nr}_30000_{post_fix}.npy")[0:, ::2][0:, step::step]  # (10x2400)
-    yaw_measurement = read_measurement(turbine_data_dir, "nacYaw")  # (10x2400)
-    rotation_measurement = read_measurement(turbine_data_dir, "rotSpeed")  # (10x2400)
+    turbine_pos = torch.tensor(read_turbine_positions(layout_file))  # (10x2)
+    wind_speeds = torch.tensor(np.load(f"{flow_data_dir}/windspeed_estimation_case_0{case_nr}_30000_{post_fix}.npy")[0:, ::2][0:, step::step])  # (10x2400)
+    yaw_measurement = torch.tensor(read_measurement(turbine_data_dir, "nacYaw"))  # (10x2400)
+    rotation_measurement = torch.tensor(read_measurement(turbine_data_dir, "rotSpeed"))  # (10x2400)
 
-    # Get wind field as (target)
-    targets = read_windspeed_maps(flow_data_dir, data_range)  # (90000, 2400)
-
-    # TODO: use the graph function to create an input graph with edge features for every timestep.
-    # TODO: investigate graph libraries required to built working graph neural network with this data.
-    # https://www.exxactcorp.com/blog/Deep-Learning/pytorch-geometric-vs-deep-graph-library
-    # TODO: think of what format is best to deliver as input to the neural network.
+    # Create custom dataset
+    for i, timestep in enumerate(data_range):
+        wind_vec = angle_to_vec(wind_angles[i])
+        edge_index, edge_attr = create_turbine_graph_tensors(turbine_pos, wind_vec, max_angle=max_angle)
+        node_feats = torch.stack((wind_speeds[:, i], yaw_measurement[:, i], rotation_measurement[:, i]), dim=0).T
+        target = torch.tensor(np.load(f"{flow_data_dir}/Windspeed_map_scalars/Windspeed_map_scalars_{timestep}.npy")).flatten()
+        graph_data = Data(x=node_feats, edge_index=edge_index, edge_attr=edge_attr, y=target, pos=turbine_pos)
+        graph_data.global_feats = torch.tensor(wind_angles[i])
+        # Save the graph with all data
+        torch.save(graph_data, f"{output_dir}/graph_{timestep}.pt")
 
 
 if __name__ == "__main__":
-    wind_angles = read_wind_angles("./slices/Case_1/HKN_12_to_15_dir.csv")
-    turbine_pos = read_turbine_positions("./slices/Case_1/HKN_12_to_15_layout_balanced.csv")
-    timestep = 1310
-    max_angle = 90
-    wind_vec = get_wind_vec_at_time(wind_angles, timestep)
-    graph = create_turbine_graph(turbine_pos, wind_vec, max_angle=max_angle)
-    plot_graph(graph, wind_vec, max_angle=max_angle)
+    prepare_graph_training_data()
+    # wind_angles = read_wind_angles("../data/Case_01/HKN_12_to_15_dir.csv")
+    # turbine_pos = read_turbine_positions("../data/Case_01/HKN_12_to_15_layout_balanced.csv")
+    # timestep = 505
+    # max_angle = 30
+    # wind_vec = get_wind_vec_at_time(wind_angles, timestep)
+    # graph = create_turbine_nx_graph(turbine_pos, wind_vec, max_angle=max_angle)
+    # plot_graph(graph, wind_vec, max_angle=max_angle)
 
     # animate_mean_absolute_speed(30005)
-    umean_abs, x_axis, y_axis = vtk_to_umean_abs(
-        './slices/Case_1/BL/30505/U_slice_horizontal.vtk')
-    plot_mean_absolute_speed(umean_abs, x_axis, y_axis, graph, wind_vec)
-    # animate_mean_absolute_speed(30005, comparison=True, case="Case_1")
+    # umean_abs, x_axis, y_axis = vtk_to_umean_abs(
+    #     '../data/Case_01/measurements_flow/postProcessing_BL/sliceDataInstantaneous/30505/U_slice_horizontal.vtk')
+    # plot_mean_absolute_speed(umean_abs, x_axis, y_axis, graph, wind_vec)
+    # animate_mean_absolute_speed(30005, comparison=True, case="Case_01")

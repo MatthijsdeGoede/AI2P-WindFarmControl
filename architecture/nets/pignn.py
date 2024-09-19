@@ -18,13 +18,9 @@ class PowerPIGNN(nn.Module):
                  n_pign_layers: int = 3,
                  residual: bool = True,
                  input_norm: bool = True,
-                 pign_params: dict = None,
                  pign_mlp_params: dict = None,
                  reg_mlp_params: dict = None):
         super(PowerPIGNN, self).__init__()
-
-        if pign_params is None:
-            pign_params = {'edge_aggregator': 'mean', 'global_node_aggr': 'mean', 'global_edge_aggr': 'mean'}
 
         if pign_mlp_params is None:
             pign_mlp_params = {'num_neurons': [256, 128], 'hidden_act': 'ReLU', 'out_act': 'ReLU'}
@@ -54,20 +50,20 @@ class PowerPIGNN(nn.Module):
             em = MLP(ei + 2 * ni + gi, eo, input_norm=_input_norm, **pign_mlp_params)
             nm = MLP(ni + eo + gi, no, input_norm=_input_norm, **pign_mlp_params)
             gm = MLP(gi + eo + no, go, input_norm=_input_norm, **pign_mlp_params)
-            layer = PIGN(em, nm, gm, residual=_residual, use_attention=use_attention, **pign_params)
+            layer = PIGN(em, nm, gm, residual=_residual, use_attention=use_attention)
             self.gn_layers.append(layer)
 
         # regression layer : convert the node embedding to power predictions
         self.reg = MLP(node_hidden_dim, output_dim, **reg_mlp_params)
 
-    def _forward_graph(self, g, nf, ef, u):
-        unf, uef, uu = nf, ef, u
+    def _forward_graph(self, node_feat, edge_feat, glob_feat, edge_idx):
+        unf, uef, uu = node_feat, edge_feat, glob_feat
         for layer in self.gn_layers:
-            unf, uef, uu = layer(g, unf, uef, uu)
+            unf, uef, uu = layer(node_feat, edge_feat, glob_feat, edge_idx)
         return unf, uef, uu
 
-    def forward(self, g, nf, ef, u):
-        unf, uef, uu = self._forward_graph(g, nf, ef, u)
+    def forward(self, node_feat, edge_feat, glob_feat, edge_idx):
+        unf, uef, uu = self._forward_graph(node_feat, edge_feat, glob_feat, edge_idx)
         power_pred = self.reg(unf)
         return power_pred.clip(min=0.0, max=1.0)
 
@@ -84,11 +80,10 @@ class FlowPIGNN(PowerPIGNN):
                  n_pign_layers: int = 3,
                  residual: bool = True,
                  input_norm: bool = True,
-                 pign_params: dict = None,
                  pign_mlp_params: dict = None,
                  reg_mlp_params: dict = None):
         super(FlowPIGNN, self).__init__(edge_in_dim, node_in_dim, global_in_dim, edge_hidden_dim, node_hidden_dim,
-                                        global_hidden_dim, output_dim, n_pign_layers, residual, input_norm, pign_params,
+                                        global_hidden_dim, output_dim, n_pign_layers, residual, input_norm,
                                         pign_mlp_params, reg_mlp_params)
 
         if reg_mlp_params is None:
@@ -97,7 +92,7 @@ class FlowPIGNN(PowerPIGNN):
         self.reg = MLP(edge_hidden_dim + node_hidden_dim + global_hidden_dim, output_dim, **reg_mlp_params)
 
     # Override
-    def forward(self, g, nf, ef, u):
-        unf, uef, uu = self._forward_base(g, nf, ef, u)
+    def forward(self, node_feat, edge_feat, glob_feat, edge_idx):
+        unf, uef, uu = self._forward_graph(node_feat, edge_feat, glob_feat, edge_idx)
         flow_pred = self.reg(torch.cat([uef, unf, uu], dim=-1))
         return flow_pred
