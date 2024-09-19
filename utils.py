@@ -175,23 +175,44 @@ def plot_mean_absolute_speed(umean_abs, x_axis, y_axis, G, wind_vec):
     y_axis = y value range of the grid
     """
     fig, ax = plt.subplots()
+
+
+    # TODO: make this work with precomputed umean
     plt.imshow(umean_abs, extent=(x_axis[0], x_axis[-1], y_axis[0], y_axis[-1]), origin='lower', aspect='auto')
     plt.colorbar(label='Mean Velocity (UmeanAbs)')
     plt.xlabel('X-axis')
     plt.ylabel('Y-axis')
     plt.title('Interpolated UmeanAbs at Hub-Height')
-    print(y_axis[-1])
-    df = pd.read_csv("./slices/Case_1/HKN_12_to_15_layout_balanced.csv", sep=",", header=None)
-    print(df.values)
-    for i, (x, y, z) in enumerate(df.values):
-        circ = Circle((y, y_axis[-1] - x), 100, color='red')
-        ax.add_patch(circ)
-        ax.text(y, y_axis[-1] - x, f'{i}', ha='center', va='center')
+
+    # Create wind direction arrow
     pos_dict = nx.get_node_attributes(G, 'pos')
     wind_start = np.mean(np.array(list(pos_dict.values())), axis=0)
     scaled_wind_vec = 1000 * wind_vec
-    plt.quiver(wind_start[0], wind_start[1], scaled_wind_vec[0], scaled_wind_vec[1],
+
+    # Create windmill layout
+    df = pd.read_csv("./slices/Case_1/HKN_12_to_15_layout_balanced.csv", sep=",", header=None)
+
+    angle = np.deg2rad(-10)
+    R = np.array([[np.cos(angle), -np.sin(angle)],
+                  [np.sin(angle), np.cos(angle)]])
+    o = np.array([[wind_start[0], wind_start[1]]])
+
+    # Remove z component
+    p = df.values[:, :2]
+    rotated_windmills = np.squeeze((R @ (p.T - o.T) + o.T).T)
+
+    for i, (x, y) in enumerate(rotated_windmills):
+        circ = Circle((y, y_axis[-1] - x), 100, color='red')
+        ax.add_patch(circ)
+        ax.text(y, y_axis[-1] - x, f'{i}', ha='center', va='center')
+
+    p = np.array([[scaled_wind_vec[0], scaled_wind_vec[1]]])
+    o = np.array([[0, 0]])
+    rotated_wind = np.squeeze((R @ (p.T - o.T) + o.T).T)
+    print(rotated_wind)
+    plt.quiver(wind_start[0], wind_start[1], rotated_wind[0], rotated_wind[1],
                angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
+
     plt.show()
 
 
