@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import pandas as pd
 
+from matplotlib.patches import Circle
 from numpy.linalg import norm
 from scipy.interpolate import griddata
 
@@ -121,9 +122,8 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
     if frames is None:
         dirs = os.listdir(f'./slices/{case}/Processed')
         all_files = [os.listdir(f'./slices/{case}/Processed/{dir}') for dir in dirs]
-        biggest_file = [int(max(files, key=lambda x: int(x.split('.')[0].split('_')[-1])).split('.')[0].split('_')[-1])
-                        for files in all_files]
-        frames = (min(biggest_file) - start) // 5 + 1
+        biggest_file = [int(max(files, key=lambda x: int(x.split('.')[0].split('_')[-1])).split('.')[0].split('_')[-1]) for files in all_files]
+        frames = (min(biggest_file) - start)//5 + 1
         print(frames)
 
     images = []
@@ -166,7 +166,7 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
     anim.save(f'./animations/{case}/{start}/{frames}.gif', writer='pillow', progress_callback=progress_callback)
 
 
-def plot_mean_absolute_speed(umean_abs):
+def plot_mean_absolute_speed(umean_abs, x_axis, y_axis, G, wind_vec):
     """"
     Plots the mean absolute wind speed over the given grid
     inputs:
@@ -174,11 +174,24 @@ def plot_mean_absolute_speed(umean_abs):
     x_axis = x value range of the grid
     y_axis = y value range of the grid
     """
-    plt.imshow(umean_abs, origin='lower', aspect='auto')
+    fig, ax = plt.subplots()
+    plt.imshow(umean_abs, extent=(x_axis[0], x_axis[-1], y_axis[0], y_axis[-1]), origin='lower', aspect='auto')
     plt.colorbar(label='Mean Velocity (UmeanAbs)')
     plt.xlabel('X-axis')
     plt.ylabel('Y-axis')
     plt.title('Interpolated UmeanAbs at Hub-Height')
+    print(y_axis[-1])
+    df = pd.read_csv("./slices/Case_1/HKN_12_to_15_layout_balanced.csv", sep=",", header=None)
+    print(df.values)
+    for i, (x, y, z) in enumerate(df.values):
+        circ = Circle((y, y_axis[-1] - x), 100, color='red')
+        ax.add_patch(circ)
+        ax.text(y, y_axis[-1] - x, f'{i}', ha='center', va='center')
+    pos_dict = nx.get_node_attributes(G, 'pos')
+    wind_start = np.mean(np.array(list(pos_dict.values())), axis=0)
+    scaled_wind_vec = 1000 * wind_vec
+    plt.quiver(wind_start[0], wind_start[1], scaled_wind_vec[0], scaled_wind_vec[1],
+               angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
     plt.show()
 
 
@@ -318,16 +331,16 @@ def prepare_training_data():
 
 
 if __name__ == "__main__":
-    prepare_training_data()
-    # timestep = 1310
-    # max_angle = 90
-    # wind_angles = read_wind_angles("../data/Case_01/HKN_12_to_15_dir.csv")
-    # wind_vec = get_wind_vec_at_time(wind_angles, timestep)
-    # graph = create_turbine_graph(turbine_pos, wind_vec, max_angle=max_angle)
-    # plot_graph(graph, wind_vec, max_angle=max_angle)
+    wind_angles = read_wind_angles("./slices/Case_1/HKN_12_to_15_dir.csv")
+    turbine_pos = read_turbine_positions("./slices/Case_1/HKN_12_to_15_layout_balanced.csv")
+    timestep = 1310
+    max_angle = 90
+    wind_vec = get_wind_vec_at_time(wind_angles, timestep)
+    graph = create_turbine_graph(turbine_pos, wind_vec, max_angle=max_angle)
+    plot_graph(graph, wind_vec, max_angle=max_angle)
 
     # animate_mean_absolute_speed(30005)
-    # umean_abs, x_axis, y_axis = vtk_to_umean_abs(
-    #     '../data/Case_01/measurements_flow/postProcessing_BL/sliceDataInstantaneous/30890/U_slice_horizontal.vtk')
-    # plot_mean_absolute_speed(umean_abs, x_axis, y_axis)
+    umean_abs, x_axis, y_axis = vtk_to_umean_abs(
+        './slices/Case_1/BL/30505/U_slice_horizontal.vtk')
+    plot_mean_absolute_speed(umean_abs, x_axis, y_axis, graph, wind_vec)
     # animate_mean_absolute_speed(30005, comparison=True, case="Case_1")
