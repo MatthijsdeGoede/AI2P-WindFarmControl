@@ -56,14 +56,14 @@ class PowerPIGNN(nn.Module):
         # regression layer : convert the node embedding to power predictions
         self.reg = MLP(node_hidden_dim, output_dim, **reg_mlp_params)
 
-    def _forward_graph(self, node_feat, edge_feat, glob_feat, edge_idx):
-        unf, uef, uu = node_feat, edge_feat, glob_feat
+    def _forward_graph(self, data):
+        unf, uef, uu = data.x, data.edge_attr, data.global_feats
         for layer in self.gn_layers:
-            unf, uef, uu = layer(node_feat, edge_feat, glob_feat, edge_idx)
+            unf, uef, uu = layer(data)
         return unf, uef, uu
 
-    def forward(self, node_feat, edge_feat, glob_feat, edge_idx):
-        unf, uef, uu = self._forward_graph(node_feat, edge_feat, glob_feat, edge_idx)
+    def forward(self, data):
+        unf, uef, uu = self._forward_graph(data)
         power_pred = self.reg(unf)
         return power_pred.clip(min=0.0, max=1.0)
 
@@ -92,7 +92,7 @@ class FlowPIGNN(PowerPIGNN):
         self.reg = MLP(edge_hidden_dim + node_hidden_dim + global_hidden_dim, output_dim, **reg_mlp_params)
 
     # Override
-    def forward(self, node_feat, edge_feat, glob_feat, edge_idx):
-        unf, uef, uu = self._forward_graph(node_feat, edge_feat, glob_feat, edge_idx)
+    def forward(self, data):
+        unf, uef, uu = self._forward_graph(data)
         flow_pred = self.reg(torch.cat([uef, unf, uu], dim=-1))
         return flow_pred

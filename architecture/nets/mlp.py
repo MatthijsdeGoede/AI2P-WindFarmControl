@@ -1,5 +1,6 @@
 from typing import List
 
+import torch
 import torch.nn as nn
 
 
@@ -46,7 +47,7 @@ class MLP(nn.Module):
 
     def forward(self, xs):
         if hasattr(self, 'input_norm'):
-            xs = self.input_norm(xs)
+            xs = self.input_norm(xs.to(dtype=torch.float))
 
         for i, layer in enumerate(self.layers):
             if i != 0 and hasattr(self, 'dropout'):

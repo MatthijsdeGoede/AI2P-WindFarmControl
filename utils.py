@@ -344,7 +344,7 @@ def prepare_graph_training_data():
         node_feats = torch.stack((wind_speeds[:, i], yaw_measurement[:, i], rotation_measurement[:, i]), dim=0).T
         target = torch.tensor(np.load(f"{flow_data_dir}/Windspeed_map_scalars/Windspeed_map_scalars_{timestep}.npy")).flatten()
         graph_data = Data(x=node_feats, edge_index=edge_index, edge_attr=edge_attr, y=target, pos=turbine_pos)
-        graph_data.global_feats = torch.tensor(wind_angles[i])
+        graph_data.global_feats = torch.tensor(wind_vec).reshape(-1, 2)
         # Save the graph with all data
         torch.save(graph_data, f"{output_dir}/graph_{timestep}.pt")
 
