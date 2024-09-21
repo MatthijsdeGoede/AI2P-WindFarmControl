@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from torch import scatter
 from torch_geometric.utils import scatter
 from torch_geometric.nn import global_mean_pool
 
@@ -23,9 +22,9 @@ class Normalizer(nn.Module):
 
         if self.training:
             mean_update = torch.mean(xs, dim=0)  # Get mean-values along the batch dimension
-            self.mean = self.alpha * self.mean + (1 - self.alpha) * mean_update.data
+            self.mean = self.alpha * self.mean + (1 - self.alpha) * mean_update.detach()
             var_update = (1 - self.alpha) * torch.mean(torch.pow((xs - self.mean), 2), dim=0)
-            self.var = self.alpha * self.var + var_update.data
+            self.var = self.alpha * self.var + var_update.detach()
             self.std = torch.sqrt(self.var + 1e-10)
 
         standardized = xs / self.std
@@ -42,7 +41,7 @@ class Normalizer(nn.Module):
 class PhysicsInducedAttention(nn.Module):
 
     def __init__(self,
-                 input_dim=3,
+                 input_dim=2,
                  use_approx=True,
                  degree=5):
         """
@@ -84,7 +83,7 @@ class PhysicsInducedAttention(nn.Module):
         xs = self.norm(xs)
         eps = 1e-10
         inp = torch.split(xs, 1, dim=1)
-        x, r, ws = inp[0], inp[1], inp[2]
+        x, r = inp[0], inp[1]
 
         r0 = nn.functional.relu(self.r0 + eps)
         alpha = nn.functional.relu(self.alpha + eps)
@@ -106,10 +105,10 @@ class PhysicsInducedAttention(nn.Module):
 
 def global_mean_pool_edge(data, updated_ef, device):
     # Map edges to graphs based on the source node
-    edge_batch_mapping = data.batch[data.edge_index[0]]
+    edge_graph_mapping = data.batch[data.edge_index[0]]
     aggregated_ef = torch.zeros((data.num_graphs, updated_ef.size(1)), device=device)
     for graph_id in range(data.num_graphs):
-        mask = (edge_batch_mapping == graph_id)
+        mask = (edge_graph_mapping == graph_id)
         if mask.sum() > 0:
             # Mean aggregation per graph
             aggregated_ef[graph_id] = updated_ef[mask].mean(dim=0)
@@ -140,16 +139,10 @@ class PIGN(nn.Module):
         self.residual = residual
         self.use_attention = use_attention
 
-    def forward(self, data):
-        """
-        :param data: Data object containing graph, node features, edge features, and global features.
-        """
-        device = data.x.device
-        edge_index = data.edge_index.to(device)  # Edge indices
-        nf = torch.cat((data.x.to(device), data.pos.to(device)), dim=-1)  # Node features
-        ef = data.edge_attr.to(device)  # Edge features
-        gf = data.global_feats.to(device)  # Global features
-        batch_mapping = data.batch  # Which graph each node belongs to
+    def forward(self, data, nf, ef, gf):
+        device = nf.device
+        edge_index = data.edge_index.to(device)
+        batch_mapping = data.batch  # Node to graph mapping
 
         # Edge update
         edge_repeated_u = gf[batch_mapping[edge_index[0]]]
@@ -157,7 +150,7 @@ class PIGN(nn.Module):
 
         # Node update
         node_repeated_u = gf[batch_mapping]
-        updated_nf = self.node_update(updated_ef, nf, node_repeated_u, edge_index)
+        updated_nf = self.node_update(updated_ef, nf, node_repeated_u, edge_index[1])
 
         aggregated_nf = global_mean_pool(updated_nf, batch=batch_mapping)
         aggregated_ef = global_mean_pool_edge(data, updated_ef, device)
@@ -167,8 +160,8 @@ class PIGN(nn.Module):
 
         return updated_nf, updated_ef, updated_u
 
-    def edge_update(self, nf, ef, rep_gf, g):
-        src, dst = g
+    def edge_update(self, nf, ef, rep_gf, edge_index):
+        src, dst = edge_index
         model_input = torch.cat([nf[src], nf[dst], ef, rep_gf], dim=-1)
         updated_ef = self.edge_model(model_input)
 
@@ -177,19 +170,18 @@ class PIGN(nn.Module):
             down_stream_dist = ef[:, 1]
             attn_input = torch.cat([down_stream_dist, radial_dist], dim=-1)
             weights = self.attention_model(attn_input)
-            updated_ef = weights.unsqueeze(-1) * updated_ef
+            updated_ef = weights * updated_ef
 
         return updated_ef
 
-    def node_update(self, updated_ef, nf, repeated_us, edge_index):
-        target_nodes = edge_index[1]
+    def node_update(self, updated_ef, nf, repeated_us, target_nodes):
         aggregated_incoming_ef = scatter(updated_ef, target_nodes, dim=0, dim_size=nf.size(0), reduce='mean')
         nm_input = torch.cat([aggregated_incoming_ef, nf, repeated_us], dim=-1)
         updated_nf = self.node_model(nm_input)
 
         # Apply residual connection
         if self.residual:
-            updated_nf += nf
+            updated_nf = updated_nf + nf
 
         return updated_nf
 
@@ -199,6 +191,6 @@ class PIGN(nn.Module):
 
         # Apply residual connection
         if self.residual:
-            updated_gf += gf
+            updated_gf = updated_gf + gf
 
         return updated_gf

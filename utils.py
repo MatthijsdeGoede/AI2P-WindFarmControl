@@ -220,6 +220,30 @@ def plot_graph(G, wind_vec, max_angle=90):
     plt.show()
 
 
+def plot_prediction_vs_real(predicted, target):
+    fig, axs = plt.subplots(1, 2, figsize=(12, 6))  # 1 row, 2 columns
+
+    # Plot predicted
+    axs[0].imshow(target, extent=(0, 300, 0, 300), origin='lower', aspect='auto')
+    axs[0].set_title('Target UmeanAbs')
+    axs[0].set_xlabel('X-axis')
+    axs[0].set_ylabel('Y-axis')
+    cbar1 = plt.colorbar(axs[0].imshow(target), ax=axs[0])
+    cbar1.set_label('Mean Velocity (UmeanAbs)')
+
+    # Plot target
+    axs[1].imshow(predicted, extent=(0, 300, 0, 300), origin='lower', aspect='auto')
+    axs[1].set_title('Predicted UmeanAbs')
+    axs[1].set_xlabel('X-axis')
+    axs[1].set_ylabel('Y-axis')
+    cbar2 = plt.colorbar(axs[1].imshow(predicted), ax=axs[1])
+    cbar2.set_label('Mean Velocity (UmeanPredicted)')
+
+    # Adjust layout
+    plt.tight_layout()
+    plt.show()
+
+
 def angle_to_vec(wind_angle):
     angle_radians = np.deg2rad(wind_angle)
     return np.array([np.cos(angle_radians), np.sin(angle_radians)])
@@ -343,7 +367,7 @@ def prepare_graph_training_data():
         edge_index, edge_attr = create_turbine_graph_tensors(turbine_pos, wind_vec, max_angle=max_angle)
         node_feats = torch.stack((wind_speeds[:, i], yaw_measurement[:, i], rotation_measurement[:, i]), dim=0).T
         target = torch.tensor(np.load(f"{flow_data_dir}/Windspeed_map_scalars/Windspeed_map_scalars_{timestep}.npy")).flatten()
-        graph_data = Data(x=node_feats, edge_index=edge_index, edge_attr=edge_attr, y=target, pos=turbine_pos)
+        graph_data = Data(x=node_feats.float(), edge_index=edge_index, edge_attr=edge_attr.float(), y=target.float(), pos=turbine_pos)
         graph_data.global_feats = torch.tensor(wind_vec).reshape(-1, 2)
         # Save the graph with all data
         torch.save(graph_data, f"{output_dir}/graph_{timestep}.pt")

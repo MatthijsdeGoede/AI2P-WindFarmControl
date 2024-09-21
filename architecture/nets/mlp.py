@@ -47,7 +47,7 @@ class MLP(nn.Module):
 
     def forward(self, xs):
         if hasattr(self, 'input_norm'):
-            xs = self.input_norm(xs.to(dtype=torch.float))
+            xs = self.input_norm(xs)
 
         for i, layer in enumerate(self.layers):
             if i != 0 and hasattr(self, 'dropout'):

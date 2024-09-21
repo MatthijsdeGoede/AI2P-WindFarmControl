@@ -1,6 +1,6 @@
-import torch
 import torch.nn as nn
 
+from architecture.nets.deconv import DeConvModel
 from architecture.nets.mlp import MLP
 from architecture.nets.pign import PIGN
 
@@ -56,14 +56,14 @@ class PowerPIGNN(nn.Module):
         # regression layer : convert the node embedding to power predictions
         self.reg = MLP(node_hidden_dim, output_dim, **reg_mlp_params)
 
-    def _forward_graph(self, data):
-        unf, uef, uu = data.x, data.edge_attr, data.global_feats
+    def _forward_graph(self, data, nf, ef, gf):
+        unf, uef, ug = nf, ef, gf
         for layer in self.gn_layers:
-            unf, uef, uu = layer(data)
-        return unf, uef, uu
+            unf, uef, ug = layer(data, unf, uef, ug)
+        return unf, uef, ug
 
-    def forward(self, data):
-        unf, uef, uu = self._forward_graph(data)
+    def forward(self, data, nf, ef, gf):
+        unf, uef, ug = self._forward_graph(data, nf, ef, gf)
         power_pred = self.reg(unf)
         return power_pred.clip(min=0.0, max=1.0)
 
@@ -78,6 +78,7 @@ class FlowPIGNN(PowerPIGNN):
                  global_hidden_dim: int = 32,
                  output_dim: int = 90000,
                  n_pign_layers: int = 3,
+                 num_nodes: int = 10,
                  residual: bool = True,
                  input_norm: bool = True,
                  pign_mlp_params: dict = None,
@@ -85,14 +86,16 @@ class FlowPIGNN(PowerPIGNN):
         super(FlowPIGNN, self).__init__(edge_in_dim, node_in_dim, global_in_dim, edge_hidden_dim, node_hidden_dim,
                                         global_hidden_dim, output_dim, n_pign_layers, residual, input_norm,
                                         pign_mlp_params, reg_mlp_params)
+        self.num_nodes = num_nodes
 
-        if reg_mlp_params is None:
-            reg_mlp_params = {'num_neurons': [64, 32, 16], 'hidden_act': 'ReLU', 'out_act': 'ReLU'}
+        # regression layer : convert the node embedding to power predictions
+        # self.reg = MLP(num_nodes * node_hidden_dim, output_dim, **reg_mlp_params)
 
-        self.reg = MLP(edge_hidden_dim + node_hidden_dim + global_hidden_dim, output_dim, **reg_mlp_params)
+        # devonvolution layers
+        self.deconv = DeConvModel()
 
     # Override
-    def forward(self, data):
-        unf, uef, uu = self._forward_graph(data)
-        flow_pred = self.reg(torch.cat([uef, unf, uu], dim=-1))
+    def forward(self, data, nf, ef, gf):
+        unf, uef, ug = self._forward_graph(data, nf, ef, gf)
+        flow_pred = self.deconv(unf.reshape(-1, 1, self.num_nodes, unf.size(1)))
         return flow_pred
