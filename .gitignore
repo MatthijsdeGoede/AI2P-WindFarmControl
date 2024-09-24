@@ -6,6 +6,11 @@ animations/*
 /data/**/*.npy
 /data/**/*.vtk
 
+# Don't store the measurements at the turbines, that don't have a file extension
+/data/*/measurements_turbines/*/*
+# But do include the README file in that folder
+!/data/*/measurements_turbines/*/README.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
