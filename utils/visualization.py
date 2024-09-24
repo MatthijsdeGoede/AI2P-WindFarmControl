@@ -6,12 +6,7 @@ import pandas as pd
 from matplotlib import pyplot as plt, animation
 from matplotlib.patches import Circle
 
-from utils.preprocessing import read_wind_angles, read_turbine_positions, get_wind_vec_at_time, create_turbine_nx_graph, \
-    vtk_to_umean_abs
-
-
-def get_data_from_file(type, i, case):
-    return np.load(f'../data/{case}/measurements_flow/{type}/windspeedMapScalars/Windspeed_map_scalars_{i}.npy')
+from utils.preprocessing import read_wind_speed_scalars
 
 
 def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case_01"):
@@ -33,7 +28,7 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
     images = []
 
     def setup_image(ax, type):
-        umean = get_data_from_file(type, start, case)
+        umean = read_wind_speed_scalars(type, start, case)
         axes_image = ax.imshow(umean, animated=True)
         ax.set_xlabel("Distance (m)")
         ax.set_ylabel("Distance (m)")
@@ -43,8 +38,6 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
     #
     # setup_image(ax1, "BL")
 
-    # setup_image(ax2, "LuT2deg")
-    # fig.colorbar(axes_image_1)
     if comparison:
         fig, (ax1, ax2) = plt.subplots(1, 2)
         setup_image(ax1, "postProcessing_BL")
@@ -60,7 +53,7 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
         # fig.suptitle(f"Interpolated UmeanAbs at Hub-Height\nRuntime of simulation: {5 * i} seconds")
 
         for axes_image, type in images:
-            umean_abs = get_data_from_file(type, start + 5 * i, case)
+            umean_abs = read_wind_speed_scalars(type, start + 5 * i, case)
             axes_image.set_data(umean_abs)
         return fig, *images
 
@@ -155,23 +148,3 @@ def plot_prediction_vs_real(predicted, target):
     # Adjust layout
     plt.tight_layout()
     plt.show()
-
-if __name__ == '__main__':
-    case = 1
-    turbines = "12_to_15" if case == 1 else "06_to_09" if case == 2 else "00_to_03"
-    layout_file = f"../data/Case_0{case}/HKN_{turbines}_layout_balanced.csv"
-    wind_angles = read_wind_angles(f"../data/Case_0{case}/HKN_{turbines}_dir.csv")
-    turbine_pos = read_turbine_positions(layout_file)
-    timestep = 430
-    max_angle = 90
-    wind_vec = get_wind_vec_at_time(wind_angles, timestep)
-
-    # Plot graph of windmills
-    graph = create_turbine_nx_graph(turbine_pos, wind_vec, max_angle=max_angle)
-    plot_graph(graph, wind_vec, max_angle=max_angle)
-
-    # animate_mean_absolute_speed(30005)
-    umean_abs, x_axis, y_axis = vtk_to_umean_abs(
-        f'../data/Case_0{case}/measurements_flow/postProcessing_BL/sliceDataInstantaneous/{30000 + timestep}/U_slice_horizontal.vtk')
-    plot_mean_absolute_speed(umean_abs, x_axis, y_axis, wind_vec, layout_file)
-    # animate_mean_absolute_speed(30005, comparison=True, case="Case_1")

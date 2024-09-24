@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import torch
 
-from torch_geometric.data import Data
 from numpy.linalg import norm
 from scipy.interpolate import griddata
 
@@ -15,19 +14,20 @@ class MultiThread:
     def __init__(self, case, type):
         self.case = case
         self.type = type
+        self.working_dir = f'../data/Case_0{self.case}/measurements_flow/postProcessing_{self.type}'
 
     def compute(self, index):
-        umean_abs, _, _ = vtk_to_umean_abs(f'./slices/{self.case}/{self.type}/{index}/U_slice_horizontal.vtk')
-        np.save(f'./slices/{self.case}/Processed/{self.type}/Windspeed_map_scalars_{index}', umean_abs)
+        umean_abs, _, _ = vtk_to_umean_abs(f'{self.working_dir}/sliceDataInstantaneous/{index}/U_slice_horizontal.vtk')
+        np.save(f'{self.working_dir}/windspeedMapScalars/Windspeed_map_scalars_{index}', umean_abs)
         print(f'Processed {index}')
 
 
 def preprocess_vtk_files(case, type, overwrite=True):
-    dirs = set(os.listdir(f'./slices/{case}/{type}'))
-    os.makedirs(f'./slices/{case}/Processed/{type}', exist_ok=True)
+    working_dir = f'../data/Case_0{case}/measurements_flow/postProcessing_{type}/sliceDataInstantaneous'
+    dirs = set(os.listdir(working_dir))
 
     if not overwrite:
-        existing = {file.split("_")[-1].split(".")[0] for file in os.listdir(f'./slices/{case}/Processed/{type}')}
+        existing = {file.split("_")[-1].split(".")[0] for file in os.listdir(f'{working_dir}/windspeedMapScalars')}
         dirs = dirs - existing
 
     m = MultiThread(case, type)
@@ -134,6 +134,10 @@ def vtk_to_umean_abs(file):
     return umean_abs, x_axis, y_axis
 
 
+def read_wind_speed_scalars(type, i, case):
+    return np.load(f'../data/{case}/measurements_flow/{type}/windspeedMapScalars/Windspeed_map_scalars_{i}.npy')
+
+
 def angle_to_vec(wind_angle):
     angle_radians = np.deg2rad(wind_angle)
     return np.array([np.cos(angle_radians), np.sin(angle_radians)])
@@ -222,52 +226,3 @@ def read_measurement(folder, measurement):
     df["Time"] = df["Time"].astype('int32')
     pivot_df = df.pivot(index="Turbine", columns="Time", values="Measurement")
     return pivot_df.to_numpy()
-
-
-def prepare_graph_training_data():
-    case_nr = 2
-    wake_steering = False
-    post_fix = "LuT2deg_internal" if wake_steering else "BL"
-    start_ts = 30000
-    min_ts = 30005
-    max_ts = 42000
-    step = 5
-    data_range = range(min_ts, max_ts + 1, step)
-    max_angle = 360
-
-    data_dir = f"../../data/Case_0{case_nr}"
-    flow_data_dir = f"{data_dir}/measurements_flow/postProcessing_{post_fix}"
-    turbine_data_dir = f"{data_dir}/measurements_turbines/30000_{post_fix}"
-    output_dir = f"{data_dir}/graphs/{post_fix}/{max_angle}"
-    os.makedirs(output_dir, exist_ok=True)
-
-    # layout_file = f"{data_dir}/HKN_12_to_15_layout_balanced.csv"
-    # wind_angle_file = f"{data_dir}/HKN_12_to_15_dir.csv"
-
-    layout_file = f"{data_dir}/HKN_06_to_09_layout_balanced.csv"
-    wind_angle_file = f"{data_dir}/HKN_06_to_09_dir.csv"
-
-    # Get the wind angles (global features) for every timestep in the simulation
-    wind_angles = get_wind_angles_for_range(wind_angle_file, data_range, start_ts)  # (2400)
-
-    # Get the features for every wind turbine (node features)
-    turbine_pos = torch.tensor(read_turbine_positions(layout_file))  # (10x2)
-    wind_speeds = torch.tensor(np.load(f"{flow_data_dir}/windspeed_estimation_case_0{case_nr}_30000_{post_fix}.npy")[0:, ::2][0:, step::step])  # (10x2400)
-    yaw_measurement = torch.tensor(read_measurement(turbine_data_dir, "nacYaw"))  # (10x2400)
-    rotation_measurement = torch.tensor(read_measurement(turbine_data_dir, "rotSpeed"))  # (10x2400)
-
-    # Create custom dataset
-    for i, timestep in enumerate(data_range):
-        wind_vec = angle_to_vec(wind_angles[i])
-        edge_index, edge_attr = create_turbine_graph_tensors(turbine_pos, wind_vec, max_angle=max_angle)
-        # assert edge_index.size(1) == 90
-        node_feats = torch.stack((wind_speeds[:, i], yaw_measurement[:, i], rotation_measurement[:, i]), dim=0).T
-        target = torch.tensor(np.load(f"{flow_data_dir}/Windspeed_map_scalars/Windspeed_map_scalars_{timestep}.npy")).flatten()
-        graph_data = Data(x=node_feats.float(), edge_index=edge_index, edge_attr=edge_attr.float(), y=target.float(), pos=turbine_pos)
-        graph_data.global_feats = torch.tensor(wind_vec).reshape(-1, 2)
-        # Save the graph with all data
-        torch.save(graph_data, f"{output_dir}/graph_{timestep}.pt")
-
-
-if __name__ == "__main__":
-    print("Hi!")

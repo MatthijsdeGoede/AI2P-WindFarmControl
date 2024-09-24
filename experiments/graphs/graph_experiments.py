@@ -9,8 +9,8 @@ from box import Box
 from torch_geometric.data import Dataset
 from torch_geometric.loader import DataLoader
 from torch.utils.data import random_split
-from architecture.nets.pignn import FlowPIGNN
-from architecture.nets.deconv import FCDeConvNet
+from architecture.pignn.pignn import FlowPIGNN
+from architecture.pignn.deconv import FCDeConvNet
 
 import os
 from datetime import datetime
@@ -179,26 +179,26 @@ def get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True, num
 
 def run_experiments():
     experiment_cfgs = [
-        # get_config(case_nr=1, wake_steering=False, max_angle=30, use_graph=True),
+        get_config(case_nr=1, wake_steering=False, max_angle=30, use_graph=True),
         get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True),
-        # get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=True),
-        # get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=False),
+        get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=True),
+        get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=False),
 
-        # get_config(case_nr=1, wake_steering=True, max_angle=30, use_graph=True),
-        # get_config(case_nr=1, wake_steering=True, max_angle=90, use_graph=True),
-        # get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=True),
-        # get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=False),
-        #
-        # get_config(case_nr=2, wake_steering=False, max_angle=30, use_graph=True),
-        # get_config(case_nr=2, wake_steering=False, max_angle=90, use_graph=True),
-        # get_config(case_nr=2, wake_steering=False, max_angle=360, use_graph=True),
-        # get_config(case_nr=2, wake_steering=False, max_angle=360, use_graph=False),
+        get_config(case_nr=1, wake_steering=True, max_angle=30, use_graph=True),
+        get_config(case_nr=1, wake_steering=True, max_angle=90, use_graph=True),
+        get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=True),
+        get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=False),
+
+        get_config(case_nr=2, wake_steering=False, max_angle=30, use_graph=True),
+        get_config(case_nr=2, wake_steering=False, max_angle=90, use_graph=True),
+        get_config(case_nr=2, wake_steering=False, max_angle=360, use_graph=True),
+        get_config(case_nr=2, wake_steering=False, max_angle=360, use_graph=False),
     ]
 
     for i, cfg in enumerate(experiment_cfgs):
         post_fix = "LuT2deg_internal" if cfg.train.wake_steering else "BL"
         net_type = f"pignn_deconv_{cfg.train.max_angle}" if cfg.train.use_graph else "fcn_deconv"
-        data_folder = f"D:/AI2P/data/Case_0{cfg.train.case_nr}/graphs/{post_fix}/{cfg.train.max_angle}"
+        data_folder = f"../../data/Case_0{cfg.train.case_nr}/graphs/{post_fix}/{cfg.train.max_angle}"
         output_folder = create_output_folder(cfg.train, net_type)
 
         train_loader, val_loader, test_loader = create_data_loaders(data_folder, cfg.train.batch_size)
@@ -208,6 +208,5 @@ def run_experiments():
         train(model, cfg.train, train_loader, val_loader, output_folder)
 
 
-# TODO: prepare loader for temporal network
 if __name__ == "__main__":
     run_experiments()
