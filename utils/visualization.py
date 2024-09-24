@@ -6,10 +6,15 @@ import pandas as pd
 from matplotlib import pyplot as plt, animation
 from matplotlib.patches import Circle
 
-from utils.preprocessing import get_data_from_file
+from utils.preprocessing import read_wind_angles, read_turbine_positions, get_wind_vec_at_time, create_turbine_nx_graph, \
+    vtk_to_umean_abs
 
 
-def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case_1"):
+def get_data_from_file(type, i, case):
+    return np.load(f'../data/{case}/measurements_flow/{type}/windspeedMapScalars/Windspeed_map_scalars_{i}.npy')
+
+
+def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case_01"):
     """
     Creates an animation of one or two wind speed maps over time, in 5 second increments. Uses the preprocessed data.
     Data is expected to be located in ./slices/Processed/BL/*_xxxxx.npy files, and contain the precomputed mean
@@ -19,9 +24,9 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
     @param comparison: Change to True if you want to create two plots, one with wake steering and one without.
     """
     if frames is None:
-        dirs = os.listdir(f'./slices/{case}/Processed')
-        all_files = [os.listdir(f'./slices/{case}/Processed/{dir}') for dir in dirs]
-        biggest_file = [int(max(files, key=lambda x: int(x.split('.')[0].split('_')[-1])).split('.')[0].split('_')[-1]) for files in all_files]
+        dirs = os.listdir(f'../data/{case}/measurements_flow')
+        all_files = [os.listdir(f'../data/{case}/measurements_flow/{dir}/windspeedMapScalars') for dir in dirs]
+        biggest_file = [int(max(filter(lambda file: file != "README.md", files), key=lambda x: int(x.split('.')[0].split('_')[-1])).split('.')[0].split('_')[-1]) for files in all_files]
         frames = (min(biggest_file) - start)//5 + 1
         print(frames)
 
@@ -34,21 +39,21 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
         ax.set_ylabel("Distance (m)")
         images.append((axes_image, type))
 
-    fig, (ax1) = plt.subplots(1, 1)
-
-    setup_image(ax1, "BL")
+    # fig, (ax1) = plt.subplots(1, 1)
+    #
+    # setup_image(ax1, "BL")
 
     # setup_image(ax2, "LuT2deg")
     # fig.colorbar(axes_image_1)
     if comparison:
         fig, (ax1, ax2) = plt.subplots(1, 2)
-        setup_image(ax1, "BL")
+        setup_image(ax1, "postProcessing_BL")
         ax1.set_title("Greedy Controller")
-        setup_image(ax2, "LuT2deg")
+        setup_image(ax2, "postProcessing_LuT2deg_internal")
         ax2.set_title("Wake Steering")
     else:
         fig, (ax1) = plt.subplots(1, 1)
-        setup_image(ax1, "BL")
+        setup_image(ax1, "postProcessing_BL")
         fig.colorbar(images[0][0], ax=ax1)
 
     def animate(i):
@@ -65,7 +70,24 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
     anim.save(f'./animations/{case}/{start}/{frames}.gif', writer='pillow', progress_callback=progress_callback)
 
 
-def plot_mean_absolute_speed(umean_abs, x_axis, y_axis, G, wind_vec):
+def add_windmills(ax, layout_file):
+    # Create windmill layout
+    df = pd.read_csv(layout_file, sep=",", header=None)
+
+    for i, (x, y, z) in enumerate(df.values):
+        circ = Circle((x, y), 100, color='red')
+        ax.add_patch(circ)
+        ax.text(x, y, f'{i}', ha='center', va='center')
+
+
+def add_quiver(ax, x_axis, y_axis, wind_vec):
+    scaled_wind_vec = 1000 * wind_vec
+
+    ax.quiver((x_axis[-1] - x_axis[0])/2, (y_axis[-1] - y_axis[0])/2, scaled_wind_vec[0], scaled_wind_vec[1],
+               angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
+
+
+def plot_mean_absolute_speed(umean_abs, x_axis, y_axis, wind_vec, layout_file):
     """"
     Plots the mean absolute wind speed over the given grid
     inputs:
@@ -74,23 +96,17 @@ def plot_mean_absolute_speed(umean_abs, x_axis, y_axis, G, wind_vec):
     y_axis = y value range of the grid
     """
     fig, ax = plt.subplots()
+
+    # TODO: make this work with precomputed umean
     plt.imshow(umean_abs, extent=(x_axis[0], x_axis[-1], y_axis[0], y_axis[-1]), origin='lower', aspect='auto')
     plt.colorbar(label='Mean Velocity (UmeanAbs)')
     plt.xlabel('X-axis')
     plt.ylabel('Y-axis')
     plt.title('Interpolated UmeanAbs at Hub-Height')
-    print(y_axis[-1])
-    df = pd.read_csv("../../data/Case_01/HKN_12_to_15_layout_balanced.csv", sep=",", header=None)
-    print(df.values)
-    for i, (x, y, z) in enumerate(df.values):
-        circ = Circle((y, x_axis[-1] - x), 100, color='red')
-        ax.add_patch(circ)
-        ax.text(y, x_axis[-1] - x, f'{i}', ha='center', va='center')
-    pos_dict = nx.get_node_attributes(G, 'pos')
-    wind_start = np.mean(np.array(list(pos_dict.values())), axis=0)
-    scaled_wind_vec = 1000 * wind_vec
-    plt.quiver(wind_start[0], wind_start[1], scaled_wind_vec[0], scaled_wind_vec[1],
-               angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
+
+    add_windmills(ax, layout_file)
+    add_quiver(ax, x_axis, y_axis, wind_vec)
+
     plt.show()
 
 
@@ -139,3 +155,23 @@ def plot_prediction_vs_real(predicted, target):
     # Adjust layout
     plt.tight_layout()
     plt.show()
+
+if __name__ == '__main__':
+    case = 1
+    turbines = "12_to_15" if case == 1 else "06_to_09" if case == 2 else "00_to_03"
+    layout_file = f"../data/Case_0{case}/HKN_{turbines}_layout_balanced.csv"
+    wind_angles = read_wind_angles(f"../data/Case_0{case}/HKN_{turbines}_dir.csv")
+    turbine_pos = read_turbine_positions(layout_file)
+    timestep = 430
+    max_angle = 90
+    wind_vec = get_wind_vec_at_time(wind_angles, timestep)
+
+    # Plot graph of windmills
+    graph = create_turbine_nx_graph(turbine_pos, wind_vec, max_angle=max_angle)
+    plot_graph(graph, wind_vec, max_angle=max_angle)
+
+    # animate_mean_absolute_speed(30005)
+    umean_abs, x_axis, y_axis = vtk_to_umean_abs(
+        f'../data/Case_0{case}/measurements_flow/postProcessing_BL/sliceDataInstantaneous/{30000 + timestep}/U_slice_horizontal.vtk')
+    plot_mean_absolute_speed(umean_abs, x_axis, y_axis, wind_vec, layout_file)
+    # animate_mean_absolute_speed(30005, comparison=True, case="Case_1")
