@@ -1,7 +1,10 @@
 slices/*
 animations/*
 
-data/*
+# Don't store any vtk, csv or npy files gotten from the experiments
+/data/**/*.csv
+/data/**/*.npy
+/data/**/*.vtk
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
