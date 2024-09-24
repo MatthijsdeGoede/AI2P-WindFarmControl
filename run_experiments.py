@@ -106,6 +106,7 @@ def train(model, train_params, train_loader, val_loader, output_folder):
 
 def compute_loss(batch, criterion, model):
     if isinstance(model, FCDeConvNet):
+        # If the model is not a Graph Neural Network, just concatenate everything
         x = batch.x.to(device)
         pos = batch.pos.to(device)
         edge_attr = batch.edge_attr.to(device)
@@ -120,13 +121,15 @@ def compute_loss(batch, criterion, model):
         ), dim=-1).float()
 
         pred = model(x_cat)
-        loss = criterion(pred, batch.y.reshape(-1, pred.size(1)))
+        target = batch.y.to(device).reshape(-1, pred.size(1))
+        loss = criterion(pred, target)
     else:
         nf = torch.cat((batch.x.to(device), batch.pos.to(device)), dim=-1).float()
         ef = batch.edge_attr.to(device).float()
         gf = batch.global_feats.to(device).float()
         pred = model(batch, nf, ef, gf)
-        loss = criterion(pred, batch.y.reshape(-1, pred.size(1)))
+        target = batch.y.to(device).reshape(-1, pred.size(1))
+        loss = criterion(pred, target)
     return loss
 
 
@@ -145,7 +148,7 @@ def get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True, num
             'global_in_dim': 2,
             'n_pign_layers': 3,
             'edge_hidden_dim': 50,
-            'node_hidden_dim': 50,
+            'node_hidden_dim': 38,
             'global_hidden_dim': 50,
             'num_nodes': 10,
             'residual': True,
@@ -176,20 +179,20 @@ def get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True, num
 
 def run_experiments():
     experiment_cfgs = [
-        get_config(case_nr=1, wake_steering=False, max_angle=30, use_graph=True),
+        # get_config(case_nr=1, wake_steering=False, max_angle=30, use_graph=True),
         get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True),
-        get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=True),
-        get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=False),
+        # get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=True),
+        # get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=False),
 
-        get_config(case_nr=1, wake_steering=True, max_angle=30, use_graph=True),
-        get_config(case_nr=1, wake_steering=True, max_angle=90, use_graph=True),
-        get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=True),
-        get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=False),
-
-        get_config(case_nr=2, wake_steering=False, max_angle=30, use_graph=True),
-        get_config(case_nr=2, wake_steering=False, max_angle=90, use_graph=True),
-        get_config(case_nr=2, wake_steering=False, max_angle=360, use_graph=True),
-        get_config(case_nr=2, wake_steering=False, max_angle=360, use_graph=False),
+        # get_config(case_nr=1, wake_steering=True, max_angle=30, use_graph=True),
+        # get_config(case_nr=1, wake_steering=True, max_angle=90, use_graph=True),
+        # get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=True),
+        # get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=False),
+        #
+        # get_config(case_nr=2, wake_steering=False, max_angle=30, use_graph=True),
+        # get_config(case_nr=2, wake_steering=False, max_angle=90, use_graph=True),
+        # get_config(case_nr=2, wake_steering=False, max_angle=360, use_graph=True),
+        # get_config(case_nr=2, wake_steering=False, max_angle=360, use_graph=False),
     ]
 
     for i, cfg in enumerate(experiment_cfgs):

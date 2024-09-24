@@ -6,7 +6,7 @@ import pandas as pd
 from matplotlib import pyplot as plt, animation
 from matplotlib.patches import Circle
 
-from utils.data import get_data_from_file
+from utils.preprocessing import get_data_from_file
 
 
 def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case_1"):

@@ -8,6 +8,8 @@ class DeConvNet(nn.Module):
         self.deconv = nn.Sequential(
             nn.ConvTranspose2d(in_channels=1, out_channels=16, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
+            nn.ConvTranspose2d(in_channels=16, out_channels=16, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(),
             nn.ConvTranspose2d(in_channels=16, out_channels=32, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
             nn.ConvTranspose2d(in_channels=32, out_channels=1, kernel_size=4, stride=2, padding=1)
