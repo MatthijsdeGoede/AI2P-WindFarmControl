@@ -23,6 +23,8 @@ def preprocess(case, type, overwrite=True):
         existing = {file.split("_")[-1].split(".")[0] for file in os.listdir(f'./slices/{case}/Processed/{type}')}
         dirs = dirs - existing
 
+    print(f'Processing in total {len(dirs)} files')
+
     m = MultiThread(case, type)
 
     with Pool() as p:
@@ -30,4 +32,4 @@ def preprocess(case, type, overwrite=True):
 
 
 if __name__ == '__main__':
-    preprocess("Case_3", "BL", overwrite=False)
+    preprocess("Case_1", "BL", overwrite=False)
