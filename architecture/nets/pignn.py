@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from architecture.nets.deconv import DeConvModel
+from architecture.nets.deconv import DeConvNet
 from architecture.nets.mlp import MLP
 from architecture.nets.pign import PIGN
 
@@ -54,7 +54,7 @@ class PowerPIGNN(nn.Module):
             self.gn_layers.append(layer)
 
         # regression layer : convert the node embedding to power predictions
-        self.reg = MLP(node_hidden_dim, output_dim, **reg_mlp_params)
+        # self.reg = MLP(node_hidden_dim, output_dim, **reg_mlp_params)
 
     def _forward_graph(self, data, nf, ef, gf):
         unf, uef, ug = nf, ef, gf
@@ -91,8 +91,8 @@ class FlowPIGNN(PowerPIGNN):
         # regression layer : convert the node embedding to power predictions
         # self.reg = MLP(num_nodes * node_hidden_dim, output_dim, **reg_mlp_params)
 
-        # devonvolution layers
-        self.deconv = DeConvModel()
+        # deconvolution layers
+        self.deconv = DeConvNet()
 
     # Override
     def forward(self, data, nf, ef, gf):

@@ -1,15 +1,44 @@
 import os
+from multiprocessing import Pool
+
 import networkx as nx
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 import pandas as pd
 import torch
-from torch_geometric.data import Data
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 
+from torch_geometric.data import Data
 from matplotlib.patches import Circle
 from numpy.linalg import norm
 from scipy.interpolate import griddata
+
+
+class MultiThread:
+    def __init__(self, case, type):
+        self.case = case
+        self.type = type
+
+    def compute(self, index):
+        umean_abs, _, _ = vtk_to_umean_abs(f'./slices/{self.case}/{self.type}/{index}/U_slice_horizontal.vtk')
+        np.save(f'./slices/{self.case}/Processed/{self.type}/Windspeed_map_scalars_{index}', umean_abs)
+        print(f'Processed {index}')
+
+
+def preprocess_vtk_files(case, type, overwrite=True):
+    dirs = set(os.listdir(f'./slices/{case}/{type}'))
+    os.makedirs(f'./slices/{case}/Processed/{type}', exist_ok=True)
+
+    if not overwrite:
+        existing = {file.split("_")[-1].split(".")[0] for file in os.listdir(f'./slices/{case}/Processed/{type}')}
+        dirs = dirs - existing
+
+    m = MultiThread(case, type)
+
+    print(f'Processing in total {len(dirs)} files')
+
+    with Pool() as p:
+        p.map(m.compute, dirs)
 
 
 def import_vtk(file):
@@ -168,7 +197,7 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
     anim.save(f'./animations/{case}/{start}/{frames}.gif', writer='pillow', progress_callback=progress_callback)
 
 
-def plot_mean_absolute_speed(umean_abs, x_axis, y_axis, G, wind_vec):
+def plot_mean_absolute_speed(umean_abs, x_axis, y_axis, G, wind_vec, layout_file):
     """"
     Plots the mean absolute wind speed over the given grid
     inputs:
@@ -177,70 +206,44 @@ def plot_mean_absolute_speed(umean_abs, x_axis, y_axis, G, wind_vec):
     y_axis = y value range of the grid
     """
     fig, ax = plt.subplots()
+
+
+    # TODO: make this work with precomputed umean
     plt.imshow(umean_abs, extent=(x_axis[0], x_axis[-1], y_axis[0], y_axis[-1]), origin='lower', aspect='auto')
     plt.colorbar(label='Mean Velocity (UmeanAbs)')
     plt.xlabel('X-axis')
     plt.ylabel('Y-axis')
     plt.title('Interpolated UmeanAbs at Hub-Height')
-    print(y_axis[-1])
-    df = pd.read_csv("../data/Case_01/HKN_12_to_15_layout_balanced.csv", sep=",", header=None)
-    print(df.values)
-    for i, (x, y, z) in enumerate(df.values):
-        circ = Circle((y, x_axis[-1] - x), 100, color='red')
+
+    # Create wind direction arrow
+    pos_dict = nx.get_node_attributes(G, 'pos')
+    wind_start = np.mean(np.array(list(pos_dict.values())), axis=0)
+    scaled_wind_vec = 1000 * wind_vec
+
+    # Create windmill layout
+    df = pd.read_csv(layout_file, sep=",", header=None)
+
+    angle = np.deg2rad(0)
+    R = np.array([[np.cos(angle), -np.sin(angle)],
+                  [np.sin(angle), np.cos(angle)]])
+    o = np.array([[(x_axis[-1] - x_axis[0] ) / 2, (y_axis[-1] - y_axis[0])/2]])
+
+    # Remove z component
+    p = df.values[:, :2]
+    rotated_windmills = np.squeeze((R @ (p.T - o.T) + o.T).T)
+
+    for i, (x, y) in enumerate(rotated_windmills):
+        circ = Circle((x, y), 100, color='red')
         ax.add_patch(circ)
-        ax.text(y, x_axis[-1] - x, f'{i}', ha='center', va='center')
-    pos_dict = nx.get_node_attributes(G, 'pos')
-    wind_start = np.mean(np.array(list(pos_dict.values())), axis=0)
-    scaled_wind_vec = 1000 * wind_vec
-    plt.quiver(wind_start[0], wind_start[1], scaled_wind_vec[0], scaled_wind_vec[1],
+        ax.text(x, y, f'{i}', ha='center', va='center')
+
+    p = np.array([[scaled_wind_vec[0], scaled_wind_vec[1]]])
+    o = np.array([[0, 0]])
+    rotated_wind = np.squeeze((R @ (p.T - o.T) + o.T).T)
+    print(rotated_wind)
+    plt.quiver(wind_start[0], wind_start[1], rotated_wind[0], rotated_wind[1],
                angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
-    plt.show()
 
-
-def plot_graph(G, wind_vec, max_angle=90):
-    pos_dict = nx.get_node_attributes(G, 'pos')
-    plt.figure(figsize=(10, 8))
-    # Draw nodes
-    nx.draw_networkx_nodes(G, pos_dict, node_size=500, node_color='lightblue')
-    # Draw edges
-    nx.draw_networkx_edges(G, pos_dict, edgelist=G.edges(), arrowstyle='-|>', arrowsize=20)
-    # Draw node labels
-    nx.draw_networkx_labels(G, pos_dict, font_size=12, font_family='sans-serif')
-    # Draw wind direction
-    wind_start = np.mean(np.array(list(pos_dict.values())), axis=0)
-    scaled_wind_vec = 1000 * wind_vec
-    plt.quiver(wind_start[0], wind_start[1], scaled_wind_vec[0], scaled_wind_vec[1],
-               angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
-    plt.legend()
-    plt.title(f"Turbine Graph with Wind Direction (max angle: {max_angle})")
-    plt.xlabel("X Coordinate")
-    plt.ylabel("Y Coordinate")
-    plt.grid(True)
-    plt.axis("equal")
-    plt.show()
-
-
-def plot_prediction_vs_real(predicted, target):
-    fig, axs = plt.subplots(1, 2, figsize=(12, 6))  # 1 row, 2 columns
-
-    # Plot predicted
-    axs[0].imshow(target, extent=(0, 300, 0, 300), origin='lower', aspect='auto')
-    axs[0].set_title('Target UmeanAbs')
-    axs[0].set_xlabel('X-axis')
-    axs[0].set_ylabel('Y-axis')
-    cbar1 = plt.colorbar(axs[0].imshow(target), ax=axs[0])
-    cbar1.set_label('Mean Velocity (UmeanAbs)')
-
-    # Plot target
-    axs[1].imshow(predicted, extent=(0, 300, 0, 300), origin='lower', aspect='auto')
-    axs[1].set_title('Predicted UmeanAbs')
-    axs[1].set_xlabel('X-axis')
-    axs[1].set_ylabel('Y-axis')
-    cbar2 = plt.colorbar(axs[1].imshow(predicted), ax=axs[1])
-    cbar2.set_label('Mean Velocity (UmeanPredicted)')
-
-    # Adjust layout
-    plt.tight_layout()
     plt.show()
 
 
@@ -250,7 +253,7 @@ def angle_to_vec(wind_angle):
 
 
 def read_wind_angles(file):
-    return np.genfromtxt(file, delimiter=",")
+    return np.genfromtxt(file, delimiter=",") + np.array([0, 180])
 
 
 def get_wind_vec_at_time(wind_angles, timestep):
@@ -287,6 +290,29 @@ def create_turbine_nx_graph(pos, wind_vec, max_angle=90, max_dist=np.inf):
                     edge_feat = calculate_wake_distances(turb_vec, wind_vec, angle=angle)
                     G.add_edge(i, j, edge_feat=edge_feat)
     return G
+
+
+def plot_graph(G, wind_vec, max_angle=90):
+    pos_dict = nx.get_node_attributes(G, 'pos')
+    plt.figure(figsize=(10, 8))
+    # Draw nodes
+    nx.draw_networkx_nodes(G, pos_dict, node_size=500, node_color='lightblue')
+    # Draw edges
+    nx.draw_networkx_edges(G, pos_dict, edgelist=G.edges(), arrowstyle='-|>', arrowsize=20)
+    # Draw node labels
+    nx.draw_networkx_labels(G, pos_dict, font_size=12, font_family='sans-serif')
+    # Draw wind direction
+    wind_start = np.mean(np.array(list(pos_dict.values())), axis=0)
+    scaled_wind_vec = 1000 * wind_vec
+    plt.quiver(wind_start[0], wind_start[1], scaled_wind_vec[0], scaled_wind_vec[1],
+               angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
+    plt.legend()
+    plt.title(f"Turbine Graph with Wind Direction (max angle: {max_angle})")
+    plt.xlabel("X Coordinate")
+    plt.ylabel("Y Coordinate")
+    plt.grid(True)
+    plt.axis("equal")
+    plt.show()
 
 
 def create_turbine_graph_tensors(pos, wind_vec, max_angle=90, max_dist=np.inf):
@@ -334,7 +360,7 @@ def read_measurement(folder, measurement):
 
 
 def prepare_graph_training_data():
-    case_nr = 1
+    case_nr = 2
     wake_steering = False
     post_fix = "LuT2deg_internal" if wake_steering else "BL"
     start_ts = 30000
@@ -342,15 +368,19 @@ def prepare_graph_training_data():
     max_ts = 42000
     step = 5
     data_range = range(min_ts, max_ts + 1, step)
-    max_angle = 30
+    max_angle = 360
 
-    data_dir = f"../data/Case_0{case_nr}"
+    data_dir = f"../../data/Case_0{case_nr}"
     flow_data_dir = f"{data_dir}/measurements_flow/postProcessing_{post_fix}"
     turbine_data_dir = f"{data_dir}/measurements_turbines/30000_{post_fix}"
-    output_dir = f"{data_dir}/graphs"
+    output_dir = f"{data_dir}/graphs/{post_fix}/{max_angle}"
+    os.makedirs(output_dir, exist_ok=True)
 
-    layout_file = f"{data_dir}/HKN_12_to_15_layout_balanced.csv"
-    wind_angle_file = f"{data_dir}/HKN_12_to_15_dir.csv"
+    # layout_file = f"{data_dir}/HKN_12_to_15_layout_balanced.csv"
+    # wind_angle_file = f"{data_dir}/HKN_12_to_15_dir.csv"
+
+    layout_file = f"{data_dir}/HKN_06_to_09_layout_balanced.csv"
+    wind_angle_file = f"{data_dir}/HKN_06_to_09_dir.csv"
 
     # Get the wind angles (global features) for every timestep in the simulation
     wind_angles = get_wind_angles_for_range(wind_angle_file, data_range, start_ts)  # (2400)
@@ -365,6 +395,7 @@ def prepare_graph_training_data():
     for i, timestep in enumerate(data_range):
         wind_vec = angle_to_vec(wind_angles[i])
         edge_index, edge_attr = create_turbine_graph_tensors(turbine_pos, wind_vec, max_angle=max_angle)
+        # assert edge_index.size(1) == 90
         node_feats = torch.stack((wind_speeds[:, i], yaw_measurement[:, i], rotation_measurement[:, i]), dim=0).T
         target = torch.tensor(np.load(f"{flow_data_dir}/Windspeed_map_scalars/Windspeed_map_scalars_{timestep}.npy")).flatten()
         graph_data = Data(x=node_feats.float(), edge_index=edge_index, edge_attr=edge_attr.float(), y=target.float(), pos=turbine_pos)
@@ -374,17 +405,19 @@ def prepare_graph_training_data():
 
 
 if __name__ == "__main__":
-    prepare_graph_training_data()
-    # wind_angles = read_wind_angles("../data/Case_01/HKN_12_to_15_dir.csv")
-    # turbine_pos = read_turbine_positions("../data/Case_01/HKN_12_to_15_layout_balanced.csv")
-    # timestep = 505
-    # max_angle = 30
-    # wind_vec = get_wind_vec_at_time(wind_angles, timestep)
-    # graph = create_turbine_nx_graph(turbine_pos, wind_vec, max_angle=max_angle)
-    # plot_graph(graph, wind_vec, max_angle=max_angle)
+    case = 1
+    turbines = "12_to_15" if case == 1 else "06_to_09" if case == 2 else "00_to_03"
+    layout_file = f"../slices/Case_{case}/HKN_{turbines}_layout_balanced.csv"
+    wind_angles = read_wind_angles(f"../slices/Case_{case}/HKN_{turbines}_dir.csv")
+    turbine_pos = read_turbine_positions(layout_file)
+    timestep = 430
+    max_angle = 90
+    wind_vec = get_wind_vec_at_time(wind_angles, timestep)
+    graph = create_turbine_nx_graph(turbine_pos, wind_vec, max_angle=max_angle)
+    plot_graph(graph, wind_vec, max_angle=max_angle)
 
     # animate_mean_absolute_speed(30005)
-    # umean_abs, x_axis, y_axis = vtk_to_umean_abs(
-    #     '../data/Case_01/measurements_flow/postProcessing_BL/sliceDataInstantaneous/30505/U_slice_horizontal.vtk')
-    # plot_mean_absolute_speed(umean_abs, x_axis, y_axis, graph, wind_vec)
-    # animate_mean_absolute_speed(30005, comparison=True, case="Case_01")
+    umean_abs, x_axis, y_axis = vtk_to_umean_abs(
+        f'../slices/Case_{case}/BL/{30000 + timestep}/U_slice_horizontal.vtk')
+    plot_mean_absolute_speed(umean_abs, x_axis, y_axis, graph, wind_vec, layout_file)
+    # animate_mean_absolute_speed(30005, comparison=True, case="Case_1")

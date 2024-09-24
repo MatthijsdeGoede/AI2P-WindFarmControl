@@ -117,7 +117,7 @@ def global_mean_pool_edge(data, updated_ef, device):
 
 class PIGN(nn.Module):
     """
-    Pytorch-DGL implementation of the physics-induced Graph Network Layer
+    Pytorch-Geometric implementation of the physics-induced Graph Network Layer
     "https://www.sciencedirect.com/science/article/pii/S0360544219315555"
     """
 
