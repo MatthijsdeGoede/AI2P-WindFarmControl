@@ -66,21 +66,20 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
 def add_windmills(ax, layout_file):
     # Create windmill layout
     df = pd.read_csv(layout_file, sep=",", header=None)
+    scale_factor = 300/5000
 
-    for i, (x, y, z) in enumerate(df.values):
-        circ = Circle((x, y), 100, color='red')
+    for i, (x, y, z) in enumerate(df.values * scale_factor):
+        circ = Circle((x, y), 5, color='red')
         ax.add_patch(circ)
         ax.text(x, y, f'{i}', ha='center', va='center')
 
 
-def add_quiver(ax, x_axis, y_axis, wind_vec):
-    scaled_wind_vec = 1000 * wind_vec
-
-    ax.quiver((x_axis[-1] - x_axis[0])/2, (y_axis[-1] - y_axis[0])/2, scaled_wind_vec[0], scaled_wind_vec[1],
+def add_quiver(ax, wind_vec):
+    ax.quiver(150, 150, wind_vec[0], wind_vec[1],
                angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
 
 
-def plot_mean_absolute_speed(umean_abs, x_axis, y_axis, wind_vec, layout_file):
+def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file):
     """"
     Plots the mean absolute wind speed over the given grid
     inputs:
@@ -90,15 +89,14 @@ def plot_mean_absolute_speed(umean_abs, x_axis, y_axis, wind_vec, layout_file):
     """
     fig, ax = plt.subplots()
 
-    # TODO: make this work with precomputed umean
-    plt.imshow(umean_abs, extent=(x_axis[0], x_axis[-1], y_axis[0], y_axis[-1]), origin='lower', aspect='auto')
-    plt.colorbar(label='Mean Velocity (UmeanAbs)')
-    plt.xlabel('X-axis')
-    plt.ylabel('Y-axis')
-    plt.title('Interpolated UmeanAbs at Hub-Height')
+    image = ax.imshow(umean_abs, extent=(0, 300, 0, 300), origin='lower', aspect='auto')
+    fig.colorbar(image, label='Mean Velocity (UmeanAbs)')
+    ax.set_xlabel('X-axis')
+    ax.set_ylabel('Y-axis')
+    ax.set_title('Interpolated UmeanAbs at Hub-Height')
 
     add_windmills(ax, layout_file)
-    add_quiver(ax, x_axis, y_axis, wind_vec)
+    add_quiver(ax, wind_vec)
 
     plt.show()
 
