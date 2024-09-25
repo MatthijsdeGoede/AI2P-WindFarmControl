@@ -1,5 +1,5 @@
-from utils.preprocessing import read_wind_angles, read_turbine_positions, get_wind_vec_at_time, create_turbine_nx_graph, \
-    vtk_to_umean_abs
+from utils.preprocessing import (read_wind_angles, read_turbine_positions, get_wind_vec_at_time, create_turbine_nx_graph,
+                                 read_wind_speed_scalars)
 from utils.visualization import plot_graph, plot_mean_absolute_speed
 
 
@@ -16,9 +16,10 @@ def test_graph_creation_plotting():
     plot_graph(graph, wind_vec, max_angle=max_angle)
 
     # animate_mean_absolute_speed(30005)
-    umean_abs, x_axis, y_axis = vtk_to_umean_abs(
-        f'../data/Case_0{case}/measurements_flow/postProcessing_BL/sliceDataInstantaneous/{30000 + timestep}/U_slice_horizontal.vtk')
-    plot_mean_absolute_speed(umean_abs, x_axis, y_axis, graph, wind_vec, layout_file)
+    # umean_abs, x_axis, y_axis = vtk_to_umean_abs(
+    #     f'../data/Case_0{case}/measurements_flow/postProcessing_BL/sliceDataInstantaneous/{30000 + timestep}/U_slice_horizontal.vtk')
+    umean_abs = read_wind_speed_scalars("postProcessing_BL", 30000 + timestep, f"Case_0{case}")
+    plot_mean_absolute_speed(umean_abs, 100 * wind_vec, layout_file)
 
 
 if __name__ == "__main__":
