@@ -76,7 +76,7 @@ class FlowPIGNN(PowerPIGNN):
                  edge_hidden_dim: int = 32,
                  node_hidden_dim: int = 32,
                  global_hidden_dim: int = 32,
-                 output_dim: int = 90000,
+                 output_dim: int = 16384,
                  n_pign_layers: int = 3,
                  num_nodes: int = 10,
                  residual: bool = True,

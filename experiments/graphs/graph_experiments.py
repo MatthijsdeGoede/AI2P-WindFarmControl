@@ -6,7 +6,7 @@ import torch.nn as nn
 from adamp import AdamP
 from torch.optim import Adam
 from box import Box
-from torch_geometric.data import Dataset
+from torch_geometric.data import Dataset, Data, Batch
 from torch_geometric.loader import DataLoader
 from torch.utils.data import random_split
 from architecture.pignn.pignn import FlowPIGNN
@@ -15,14 +15,16 @@ from architecture.pignn.deconv import FCDeConvNet
 import os
 from datetime import datetime
 
+from architecture.windspeedLSTM.windspeedLSTM import WindspeedLSTM
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class GraphDataset(Dataset):
     def __init__(self, root, data_range, transform=None, pre_transform=None):
         super(GraphDataset, self).__init__(root, transform, pre_transform)
-        self.data_range = data_range
         self.root = root
+        self.data_range = data_range
         self.graph_paths = self.load_graph_paths()
 
     def load_graph_paths(self):
@@ -38,8 +40,28 @@ class GraphDataset(Dataset):
         return graph_data
 
 
-def create_data_loaders(data_folder, batch_size):
-    dataset = GraphDataset(root=data_folder, data_range=range(30005, 42000 + 1, 5))
+class GraphTemporalDataset(Dataset):
+    def __init__(self, root, seq_length, transform=None, pre_transform=None):
+        super(GraphTemporalDataset, self).__init__(root, transform, pre_transform)
+        self.root = root
+        self.seq_length = seq_length
+
+    def _get_sequence(self, start):
+        return [torch.load(f"{self.root}/graph_{30005 + (start + i) * 5}.pt") for i in range(self.seq_length)]
+
+    def len(self):
+        return len([name for name in os.listdir(self.root)]) - self.seq_length + 1
+
+    def get(self, idx):
+        return self._get_sequence(idx)
+
+
+def custom_collate_fn(batch):
+    # Each batch consists of a list of sequences (each a list of graphs)
+    return [Data.from_data_list(seq) for seq in batch]
+
+
+def create_data_loaders(dataset, batch_size, custom_collate=None):
     total_size = len(dataset)
     train_size = int(0.7 * total_size)
     val_size = int(0.1 * total_size)
@@ -47,9 +69,9 @@ def create_data_loaders(data_folder, batch_size):
 
     train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=4)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=4)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=4)
 
     return train_loader, val_loader, test_loader
 
@@ -83,14 +105,98 @@ def train(model, train_params, train_loader, val_loader, output_folder):
                 batch = batch.to(device)
                 val_loss = compute_loss(batch, criterion, model)
                 val_losses.append(val_loss.item())
-                model.train()
+        model.train()
 
         learning_rate = optimizer.param_groups[0]['lr']
         avg_val_loss = np.mean(val_losses)
-        print(f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {np.mean(train_losses)}, validation loss: {avg_val_loss}")
+        print(
+            f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {np.mean(train_losses)}, validation loss: {avg_val_loss}")
 
         # Save model pointer
         torch.save(model.state_dict(), f"{output_folder}/pignn_{epoch}.pt")
+
+        # Check early stopping criterion
+        if avg_val_loss < best_loss:
+            best_loss = avg_val_loss
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+
+        if epochs_no_improve >= train_params.early_stop_after:
+            print(f'Early stopping at epoch {epoch}')
+            break
+
+
+def train_temporal(graph_model, temporal_model, train_params, train_loader, val_loader, output_folder):
+
+    optimizer = torch.optim.Adam(list(graph_model.parameters()) + list(temporal_model.parameters()), lr=0.01)
+    criterion = nn.MSELoss()
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50)
+
+    num_epochs = train_params.num_epochs
+    best_loss = float('inf')
+    epochs_no_improve = 0
+
+    for epoch in range(1, num_epochs + 1):
+        train_losses = []
+        for i, batch in enumerate(train_loader):
+            print(f"processing batch {i+1}/{len(train_loader)}")
+            generated_img = []
+            target_img = []
+            for seq in batch:
+                # Process graphs in parallel at each timestep for the entire batch
+                seq = seq.to(device)
+                nf = torch.cat((seq.x.to(device), seq.pos.to(device)), dim=-1)
+                ef = seq.edge_attr.to(device)
+                gf = seq.global_feats.to(device)
+                graph_output = graph_model(seq, nf, ef, gf).reshape(-1, 128, 128)
+                generated_img.append(graph_output)
+                target_img.append(seq.y.reshape(-1, 128, 128))
+
+
+            temporal_img = torch.stack(generated_img, dim=1)
+            output = temporal_model(temporal_img).float()
+            target = torch.stack(target_img, dim=1)
+            loss = criterion(output, target)
+            train_losses.append(loss.item())
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            scheduler.step()
+
+        with torch.no_grad():
+            graph_model.eval()
+            temporal_model.eval()
+            val_losses = []
+            for batch in val_loader:
+                generated_img = []
+                target_img = []
+                for seq in batch:
+                    # Process graphs in parallel at each timestep for the entire batch
+                    seq = seq.to(device)
+                    nf = torch.cat((seq.x.to(device), seq.pos.to(device)), dim=-1)
+                    ef = seq.edge_attr.to(device)
+                    gf = seq.global_feats.to(device)
+                    graph_output = graph_model(seq, nf, ef, gf).reshape(-1, 128, 128)
+                    generated_img.append(graph_output)
+                    target_img.append(seq.y.reshape(-1, 128, 128))
+
+                temporal_img = torch.stack(generated_img, dim=1)
+                output = temporal_model(temporal_img)
+                target = torch.stack(target_img, dim=1)
+                val_loss = criterion(output, target)
+                val_losses.append(val_loss.item())
+        graph_model.train()
+        temporal_model.train()
+
+        learning_rate = optimizer.param_groups[0]['lr']
+        avg_val_loss = np.mean(val_losses)
+        print(
+            f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {np.mean(train_losses)}, validation loss: {avg_val_loss}")
+
+        # Save model pointers
+        torch.save(graph_model.state_dict(), f"{output_folder}/pignn_{epoch}.pt")
+        torch.save(temporal_model.state_dict(), f"{output_folder}/unet_lstm_{epoch}.pt")
 
         # Check early stopping criterion
         if avg_val_loss < best_loss:
@@ -135,12 +241,13 @@ def compute_loss(batch, criterion, model):
 
 def create_output_folder(train_config, net_type):
     time = datetime.now().strftime('%Y%m%d%H%M%S')
-    output_folder = f"results/{time}_Case0{train_config.case_nr}_{train_config.wake_steering}_{net_type}"
+    output_folder = f"results/{time}_Case0{train_config.case_nr}_{train_config.wake_steering}_{net_type}_" \
+                    f"{train_config.seq_length}"
     os.makedirs(output_folder)
     return output_folder
 
 
-def get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True, num_epochs=200):
+def get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True, num_epochs=100, seq_length=1):
     cfg = Box({
         'model': {
             'edge_in_dim': 2,
@@ -148,7 +255,7 @@ def get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True, num
             'global_in_dim': 2,
             'n_pign_layers': 3,
             'edge_hidden_dim': 50,
-            'node_hidden_dim': 38,
+            'node_hidden_dim': 50,
             'global_hidden_dim': 50,
             'num_nodes': 10,
             'residual': True,
@@ -171,7 +278,8 @@ def get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True, num
             'num_epochs': num_epochs,
             'use_graph': use_graph,
             'early_stop_after': 5,
-            'batch_size': 64,
+            'batch_size': 4,
+            'seq_length': seq_length,
         }
     })
     return cfg
@@ -179,20 +287,20 @@ def get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True, num
 
 def run_experiments():
     experiment_cfgs = [
-        get_config(case_nr=1, wake_steering=False, max_angle=30, use_graph=True),
-        get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True),
-        get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=True),
-        get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=False),
-
-        get_config(case_nr=1, wake_steering=True, max_angle=30, use_graph=True),
-        get_config(case_nr=1, wake_steering=True, max_angle=90, use_graph=True),
-        get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=True),
-        get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=False),
-
-        get_config(case_nr=2, wake_steering=False, max_angle=30, use_graph=True),
-        get_config(case_nr=2, wake_steering=False, max_angle=90, use_graph=True),
-        get_config(case_nr=2, wake_steering=False, max_angle=360, use_graph=True),
-        get_config(case_nr=2, wake_steering=False, max_angle=360, use_graph=False),
+        get_config(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length=50),
+        # get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True),
+        # get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=True),
+        # get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=False),
+        #
+        # get_config(case_nr=1, wake_steering=True, max_angle=30, use_graph=True),
+        # get_config(case_nr=1, wake_steering=True, max_angle=90, use_graph=True),
+        # get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=True),
+        # get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=False),
+        #
+        # get_config(case_nr=2, wake_steering=False, max_angle=30, use_graph=True),
+        # get_config(case_nr=2, wake_steering=False, max_angle=90, use_graph=True),
+        # get_config(case_nr=2, wake_steering=False, max_angle=360, use_graph=True),
+        # get_config(case_nr=2, wake_steering=False, max_angle=360, use_graph=False),
     ]
 
     for i, cfg in enumerate(experiment_cfgs):
@@ -200,12 +308,22 @@ def run_experiments():
         net_type = f"pignn_deconv_{cfg.train.max_angle}" if cfg.train.use_graph else "fcn_deconv"
         data_folder = f"../../data/Case_0{cfg.train.case_nr}/graphs/{post_fix}/{cfg.train.max_angle}"
         output_folder = create_output_folder(cfg.train, net_type)
+        seq_length = cfg.train.seq_length
 
-        train_loader, val_loader, test_loader = create_data_loaders(data_folder, cfg.train.batch_size)
-        model = FlowPIGNN(**cfg.model).to(device) if cfg.train.use_graph else FCDeConvNet(232, 650, 656, 500).to(device)
+        dataset = GraphTemporalDataset(root=data_folder, seq_length=seq_length) \
+            if seq_length > 1 else GraphDataset(root=data_folder, data_range=range(30005, 42000 + 1, 5))
+        collate = custom_collate_fn if seq_length > 1 else None
 
-        print(f"Running experiment {i+1}/{len(experiment_cfgs)}")
-        train(model, cfg.train, train_loader, val_loader, output_folder)
+        train_loader, val_loader, test_loader = create_data_loaders(dataset, cfg.train.batch_size, collate)
+        graph_model = FlowPIGNN(**cfg.model).to(device) if cfg.train.use_graph else FCDeConvNet(232, 650, 656, 500).to(device)
+
+        if seq_length > 1:
+            temporal_model = WindspeedLSTM(seq_length, 128).to(device)
+            train_temporal(graph_model, temporal_model, cfg.train, train_loader, val_loader, output_folder)
+        else:
+            train(graph_model, cfg.train, train_loader, val_loader, output_folder)
+
+        print(f"Running experiment {i + 1}/{len(experiment_cfgs)}")
 
 
 if __name__ == "__main__":

@@ -6,20 +6,18 @@ class DeConvNet(nn.Module):
         super(DeConvNet, self).__init__()
         # Upsampling layers, each layer multiplies both dims by 2
         self.deconv = nn.Sequential(
-            nn.ConvTranspose2d(in_channels=1, out_channels=16, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose2d(in_channels=1, out_channels=128, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(in_channels=16, out_channels=16, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose2d(in_channels=128, out_channels=256, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(in_channels=16, out_channels=32, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(),
-            nn.ConvTranspose2d(in_channels=32, out_channels=1, kernel_size=4, stride=2, padding=1)
+            nn.ConvTranspose2d(in_channels=256, out_channels=1, kernel_size=4, stride=2, padding=1)
         )
 
     def forward(self, x):
         output_tensor = self.deconv(x)
         # Use interpolation to reach the exact desired output size of (300, 300)
         return nn.functional.interpolate(
-            output_tensor, size=(300, 300), mode='bilinear', align_corners=False).reshape(output_tensor.size(0), -1)
+            output_tensor, size=(128, 128), mode='bilinear', align_corners=False).reshape(output_tensor.size(0), -1)
 
 
 class FCDeConvNet(nn.Module):
