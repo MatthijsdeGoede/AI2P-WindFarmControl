@@ -8,33 +8,30 @@ from torch.utils.data import DataLoader, random_split
 import numpy as np
 from tqdm import tqdm
 
-from Siren import Siren
+from PINN import PINN
 from GridDataset import GridDataset
-from NSLoss import NSLoss
+from IncNSLoss import NSLoss
 
 assert torch.cuda.is_available()
 
-def main(physics_coef: int, hidden_size: int, only_grid: bool, w0: int, wh: int, model_save_path: str):
+generator = torch.Generator()
+generator.manual_seed(42)
+
+def main(physics_coef: int, hidden_size: int, only_grid: bool, model_save_path: str):
     dataset = GridDataset("data/Case_01/measurements_flow/postProcessing_BL/winSpeedMapVector/",
                           "data/Case_01/measurements_turbines/30000_BL/rot_yaw_combined.csv",
                           "data/Case_01/winDir_processed.csv", only_grid_values=only_grid)
 
     MIN_TIME, MAX_TIME = dataset[0][0][:, 2][0].item(), dataset[-1][0][:, 2][0].item()
 
-    train, tmp = random_split(dataset, [0.6, 0.4])
-    val, _ = random_split(tmp, [0.5, 0.5])
+    train, tmp = random_split(dataset, [0.6, 0.4], generator=generator)
+    val, _ = random_split(tmp, [0.5, 0.5], generator=generator)
 
     train_loader = DataLoader(train, batch_size=1, shuffle=True, num_workers=4)
     val_loader = DataLoader(val, batch_size=1, shuffle=True, num_workers=4)
 
     in_features = 3 if only_grid else 35
-    model = Siren(in_features=in_features, 
-                  out_features=5,
-                  hidden_features=hidden_size,
-                  hidden_layers=5,
-                  outermost_linear=True,
-                  first_omega_0=w0,
-                  hidden_omega_0=wh).cuda()
+    model = PINN(in_dimensions=in_features, hidden_size=hidden_size).cuda()
     
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
@@ -46,11 +43,10 @@ def main(physics_coef: int, hidden_size: int, only_grid: bool, w0: int, wh: int,
     val_losses = defaultdict(list)
 
     for epoch in tqdm(range(1, epochs+1)):
+        model.train()
         running_train_losses = defaultdict(list)
-        
-        for inputs, targets in train_loader:
-            model.train()
 
+        for batch_index, (inputs, targets) in enumerate(train_loader):
             inputs = inputs.flatten(0, 1).float().cuda(non_blocking=True)
             targets = targets.flatten(0, 1).float().cuda(non_blocking=True)
 
@@ -74,11 +70,10 @@ def main(physics_coef: int, hidden_size: int, only_grid: bool, w0: int, wh: int,
         train_losses['data'].append(np.mean(running_train_losses['data']))
         train_losses['physics'].append(np.mean(running_train_losses['physics']))
 
+        model.eval()
         running_val_losses = defaultdict(list)
 
         for inputs, targets in val_loader:
-            model.eval()
-
             inputs = inputs.flatten(0, 1).float().cuda(non_blocking=True)
             targets = targets.flatten(0, 1).float().cuda(non_blocking=True)
 
@@ -110,18 +105,15 @@ def main(physics_coef: int, hidden_size: int, only_grid: bool, w0: int, wh: int,
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("Train your SIREN model.")
+    parser = argparse.ArgumentParser(description="Train your PINN model.")
 
     parser.add_argument("--physics", type=int, default=100, help="Physics loss multiplier")
     parser.add_argument("--hidden-size", type=int, default=128)
     parser.add_argument("--only-grid", type=bool, action=argparse.BooleanOptionalAction)
 
-    parser.add_argument("--wi", type=int, default=30)
-    parser.add_argument("--wh", type=int, default=30)
-
     args = parser.parse_args()
 
-    model_save_path = f"models/Siren{args.hidden_size}-{args.wi}-{args.wh}"
+    model_save_path = f"models/SiLU{args.hidden_size}-{args.only_grid}"
     os.makedirs(model_save_path, exist_ok=True)
-    
-    main(args.physics, args.hidden_size, args.only_grid, args.wi, args.wh, model_save_path)
+
+    main(args.physics, args.hidden_size, args.only_grid, model_save_path)

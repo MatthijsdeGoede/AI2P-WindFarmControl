@@ -4,18 +4,35 @@ import torch
 from torch.utils.data import Dataset
 
 import numpy as np
+import pandas as pd
 
 
 class GridDataset(Dataset):
-    def __init__(self, dir):
+    def __init__(self, dir, turbine_csv, wind_csv, only_grid_values=False):
         super().__init__()
         self.dir = dir
         self.files = os.listdir(self.dir)
+        self.files.remove("README.md")
+
+        self.only_grid_values = only_grid_values
         
         flat_index = torch.arange(90000)
         x_coords = flat_index // 300
         y_coords = flat_index % 300
         self.coords = torch.stack([x_coords, y_coords]).T
+
+        self.df_turbines = pd.read_csv(turbine_csv, index_col=0)
+        self.df_wind = pd.read_csv(wind_csv, index_col=0)
+
+    def get_turbine_data(self, time):
+        time_instance = self.df_turbines[self.df_turbines['time'] == time][['speed', 'yaw_sin', "yaw_cos"]]
+        return torch.from_numpy(time_instance.to_numpy().flatten()).unsqueeze(0)
+    
+
+    def get_wind_data(self, time):
+        time_instance = self.df_wind[self.df_wind['time'] == time][['winddir_sin', 'winddir_cos']]
+        return torch.from_numpy(time_instance.to_numpy())
+
 
     def __len__(self):
         return len(self.files)
@@ -29,7 +46,17 @@ class GridDataset(Dataset):
             time = int(self.files[index].split(".")[0])
             time_tensor = torch.full((self.coords.shape[0], 1), time)
 
-            inputs = torch.concat((self.coords, time_tensor), dim=1)
+            if (self.only_grid_values):
+                inputs = torch.concat((self.coords, time_tensor), dim=1)
+                return inputs, flow_field
+
+            turbine_data = self.get_turbine_data(time)
+            turbine_data = turbine_data.repeat(time_tensor.shape[0], 1)
+
+            wind_data = self.get_wind_data(time)
+            wind_data = wind_data.repeat(time_tensor.shape[0], 1)
+
+            inputs = torch.concat((self.coords, time_tensor, turbine_data, wind_data), dim=1)
 
             return inputs, flow_field
 
