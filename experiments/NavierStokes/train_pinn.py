@@ -10,9 +10,12 @@ from tqdm import tqdm
 
 from PINN import PINN
 from GridDataset import GridDataset
-from NSLoss import NSLoss
+from IncNSLoss import NSLoss
 
 assert torch.cuda.is_available()
+
+generator = torch.Generator()
+generator.manual_seed(42)
 
 def main(physics_coef: int, hidden_size: int, only_grid: bool, model_save_path: str):
     dataset = GridDataset("data/Case_01/measurements_flow/postProcessing_BL/winSpeedMapVector/",
@@ -21,8 +24,8 @@ def main(physics_coef: int, hidden_size: int, only_grid: bool, model_save_path: 
 
     MIN_TIME, MAX_TIME = dataset[0][0][:, 2][0].item(), dataset[-1][0][:, 2][0].item()
 
-    train, tmp = random_split(dataset, [0.6, 0.4])
-    val, _ = random_split(tmp, [0.5, 0.5])
+    train, tmp = random_split(dataset, [0.6, 0.4], generator=generator)
+    val, _ = random_split(tmp, [0.5, 0.5], generator=generator)
 
     train_loader = DataLoader(train, batch_size=1, shuffle=True, num_workers=4)
     val_loader = DataLoader(val, batch_size=1, shuffle=True, num_workers=4)
@@ -40,11 +43,10 @@ def main(physics_coef: int, hidden_size: int, only_grid: bool, model_save_path: 
     val_losses = defaultdict(list)
 
     for epoch in tqdm(range(1, epochs+1)):
+        model.train()
         running_train_losses = defaultdict(list)
-        
-        for inputs, targets in train_loader:
-            model.train()
 
+        for batch_index, (inputs, targets) in enumerate(train_loader):
             inputs = inputs.flatten(0, 1).float().cuda(non_blocking=True)
             targets = targets.flatten(0, 1).float().cuda(non_blocking=True)
 
@@ -68,11 +70,10 @@ def main(physics_coef: int, hidden_size: int, only_grid: bool, model_save_path: 
         train_losses['data'].append(np.mean(running_train_losses['data']))
         train_losses['physics'].append(np.mean(running_train_losses['physics']))
 
+        model.eval()
         running_val_losses = defaultdict(list)
 
         for inputs, targets in val_loader:
-            model.eval()
-
             inputs = inputs.flatten(0, 1).float().cuda(non_blocking=True)
             targets = targets.flatten(0, 1).float().cuda(non_blocking=True)
 
@@ -112,7 +113,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    model_save_path = f"models/ReLU{args.hidden_size}-{args.only_grid}"
+    model_save_path = f"models/SiLU{args.hidden_size}-{args.only_grid}"
     os.makedirs(model_save_path, exist_ok=True)
 
     main(args.physics, args.hidden_size, args.only_grid, model_save_path)

@@ -2,6 +2,8 @@ import torch
 from torch import autograd
 
 """
+COMPRESSIBLE NAVIER-STOKES EQUATIONS
+
 The following Navier-Stokes equations assume the following:
 $$
 \frac{\partial w}{\partial z} = 0
