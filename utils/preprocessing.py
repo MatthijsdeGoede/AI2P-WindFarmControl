@@ -9,6 +9,10 @@ import torch
 from numpy.linalg import norm
 from scipy.interpolate import griddata
 
+from skimage.transform import resize
+
+from utils.timing import start_timer, print_timer
+
 
 class MultiThread:
     def __init__(self, case, type):
@@ -226,3 +230,7 @@ def read_measurement(folder, measurement):
     df["Time"] = df["Time"].astype('int32')
     pivot_df = df.pivot(index="Turbine", columns="Time", values="Measurement")
     return pivot_df.to_numpy()
+
+
+def resize_windspeed(windspeed_map, output_shape):
+    return resize(windspeed_map, output_shape)

@@ -78,6 +78,12 @@ def add_quiver(ax, wind_vec):
     ax.quiver(150, 150, wind_vec[0], wind_vec[1],
                angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
 
+def add_imshow(fig, ax, umean_abs):
+    axesImage = ax.imshow(umean_abs, extent=(0, 300, 0, 300), origin='lower', aspect='auto')
+    fig.colorbar(axesImage, ax=ax, label='Mean Velocity (UmeanAbs)')
+    ax.set_xlabel('X-axis')
+    ax.set_ylabel('Y-axis')
+    return axesImage
 
 def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file):
     """"
@@ -89,12 +95,7 @@ def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file):
     """
     fig, ax = plt.subplots()
 
-    image = ax.imshow(umean_abs, extent=(0, 300, 0, 300), origin='lower', aspect='auto')
-    fig.colorbar(image, label='Mean Velocity (UmeanAbs)')
-    ax.set_xlabel('X-axis')
-    ax.set_ylabel('Y-axis')
-    ax.set_title('Interpolated UmeanAbs at Hub-Height')
-
+    add_imshow(fig, ax, umean_abs)
     add_windmills(ax, layout_file)
     add_quiver(ax, wind_vec)
 
@@ -124,25 +125,45 @@ def plot_graph(G, wind_vec, max_angle=90):
     plt.show()
 
 
-def plot_prediction_vs_real(predicted, target):
+def plot_prediction_vs_real(predicted, target, case=1):
+
+    layout_file = get_layout_file(case)
+
     fig, axs = plt.subplots(1, 2, figsize=(12, 6))  # 1 row, 2 columns
 
-    # Plot predicted
-    axs[0].imshow(target, extent=(0, 300, 0, 300), origin='lower', aspect='auto')
-    axs[0].set_title('Target UmeanAbs')
-    axs[0].set_xlabel('X-axis')
-    axs[0].set_ylabel('Y-axis')
-    cbar1 = plt.colorbar(axs[0].imshow(target), ax=axs[0])
-    cbar1.set_label('Mean Velocity (UmeanAbs)')
-
     # Plot target
-    axs[1].imshow(predicted, extent=(0, 300, 0, 300), origin='lower', aspect='auto')
+    add_imshow(fig, axs[0], target)
+    axs[0].set_title('Target UmeanAbs')
+    add_windmills(axs[0], layout_file)
+
+    # Plot predicted
+    add_imshow(fig, axs[1], predicted)
     axs[1].set_title('Predicted UmeanAbs')
-    axs[1].set_xlabel('X-axis')
-    axs[1].set_ylabel('Y-axis')
-    cbar2 = plt.colorbar(axs[1].imshow(predicted), ax=axs[1])
-    cbar2.set_label('Mean Velocity (UmeanPredicted)')
+    add_windmills(axs[1], layout_file)
 
     # Adjust layout
     plt.tight_layout()
     plt.show()
+
+
+def animate_prediction_vs_real(umean_callback, n_frames=100, file_path="animation"):
+
+    fig, axs = plt.subplots(1, 2, figsize=(12, 6))
+    target, prediction = umean_callback(0)
+    axis_image_target = add_imshow(fig, axs[0], target)
+    axis_image_predicted = add_imshow(fig, axs[1], prediction)
+
+    def animate(i):
+        target, prediction = umean_callback(i)
+        axis_image_target.set_data(target)
+        axis_image_predicted.set_data(prediction)
+
+    anim = animation.FuncAnimation(fig=fig, func=animate, frames=n_frames, interval=50)
+    os.makedirs(f'{file_path}', exist_ok=True)
+    progress_callback = lambda i, n: print(f'Saving frame {i}/{n}')
+    anim.save(f'{file_path}/{n_frames}.gif', writer='pillow', progress_callback=progress_callback)
+
+
+def get_layout_file(case):
+    turbines = "12_to_15" if case == 1 else "06_to_09" if case == 2 else "00_to_03"
+    return f"../../data/Case_0{case}/HKN_{turbines}_layout_balanced.csv"
