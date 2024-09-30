@@ -8,7 +8,7 @@ class PINN(torch.nn.Module):
         self.hidden_layers = torch.nn.ModuleList([torch.nn.Linear(hidden_size, hidden_size) for _ in range(nr_hidden_layer)])
         self.output = torch.nn.Linear(hidden_size, out_dimensions)
 
-        self.activation = torch.nn.ReLU()
+        self.activation = torch.nn.SiLU()
 
     def forward(self, coords):
         # Input: x, y, t
