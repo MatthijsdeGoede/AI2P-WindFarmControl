@@ -120,9 +120,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     model_save_path = f"models/SiLU{args.hidden_size}-{'wake' if args.use_wake else 'no-wake'}"
-    print(model_save_path)
-    exit()
-
     os.makedirs(model_save_path, exist_ok=True)
 
     main(args.physics, args.hidden_size, args.only_grid, args.use_wake, model_save_path)
