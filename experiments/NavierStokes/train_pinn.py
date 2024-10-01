@@ -10,17 +10,21 @@ from tqdm import tqdm
 
 from PINN import PINN
 from GridDataset import GridDataset
-from IncNSLoss import NSLoss
+from experiments.NavierStokes.IncNSLoss import NSLoss
 
 assert torch.cuda.is_available()
 
 generator = torch.Generator()
 generator.manual_seed(42)
 
-def main(physics_coef: int, hidden_size: int, only_grid: bool, model_save_path: str):
-    dataset = GridDataset("data/Case_01/measurements_flow/postProcessing_BL/winSpeedMapVector/",
-                          "data/Case_01/measurements_turbines/30000_BL/rot_yaw_combined.csv",
-                          "data/Case_01/winDir_processed.csv", only_grid_values=only_grid)
+def main(physics_coef: int, hidden_size: int, only_grid: bool, use_wake: bool, model_save_path: str):
+    dataset = GridDataset(dir="data/Case_01/measurements_flow/postProcessing_BL/winSpeedMapVector/",
+                        turbine_csv="data/Case_01/measurements_turbines/30000_BL/rot_yaw_combined.csv",
+                        wind_csv="data/Case_01/winDir_processed.csv", 
+                        use_wake=use_wake, 
+                        wake_dir="data/Case_01/measurements_flow/postProcessing_LuT2deg_internal/winSpeedMapVector/",
+                        wake_turbine_csv="data/Case_01/measurements_turbines/30000_LuT2deg_internal/rot_yaw_combined.csv",
+                        only_grid_values=only_grid)
 
     MIN_TIME, MAX_TIME = dataset[0][0][:, 2][0].item(), dataset[-1][0][:, 2][0].item()
 
@@ -98,6 +102,7 @@ def main(physics_coef: int, hidden_size: int, only_grid: bool, model_save_path: 
         torch.save({
             'epoch': epoch,
             "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
             "train_losses": train_losses,
             "val_losses": val_losses
         }, f"{model_save_path}/model{epoch}.pt")
@@ -110,10 +115,11 @@ if __name__ == "__main__":
     parser.add_argument("--physics", type=int, default=100, help="Physics loss multiplier")
     parser.add_argument("--hidden-size", type=int, default=128)
     parser.add_argument("--only-grid", type=bool, action=argparse.BooleanOptionalAction)
+    parser.add_argument("--use-wake", type=bool, action=argparse.BooleanOptionalAction, default=True)
 
     args = parser.parse_args()
 
-    model_save_path = f"models/SiLU{args.hidden_size}-{args.only_grid}"
+    model_save_path = f"models/SiLU{args.hidden_size}-{'wake' if args.use_wake else 'no-wake'}"
     os.makedirs(model_save_path, exist_ok=True)
 
-    main(args.physics, args.hidden_size, args.only_grid, model_save_path)
+    main(args.physics, args.hidden_size, args.only_grid, args.use_wake, model_save_path)
