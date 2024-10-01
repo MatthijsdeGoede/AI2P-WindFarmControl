@@ -25,6 +25,9 @@ class GridDataset(Dataset):
 
             self.df_turbines_wake = pd.read_csv(wake_turbine_csv, index_col=0)
 
+        else:
+            self.wake_dir = None
+
         self.only_grid_values = only_grid_values
         
         flat_index = torch.arange(90000)
@@ -52,12 +55,17 @@ class GridDataset(Dataset):
 
 
     def __len__(self):
+        if (not self.use_wake):
+            return len(self.files)
+        
         return len(self.files) + len(self.wake_files)
     
 
     def is_index_wake_steering(self, index):
+        if (not self.use_wake):
+            return False, index
+        
         files_per_case = len(self.files)
-
         is_wake_steering = False if (index // files_per_case == 0) else True
         index = index % files_per_case
 
