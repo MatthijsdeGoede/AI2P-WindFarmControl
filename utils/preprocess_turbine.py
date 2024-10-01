@@ -2,8 +2,8 @@ import os
 import pandas as pd
 import numpy as np
 
-yaw_path = "data/Case_01/measurements_turbines/30000_BL/nacYaw"
-rotspeed_path = "data/Case_01/measurements_turbines/30000_BL/rotSpeed"
+yaw_path = "data/Case_01/measurements_turbines/30000_LuT2deg_internal/nacYaw"
+rotspeed_path = "data/Case_01/measurements_turbines/30000_LuT2deg_internal/rotSpeed"
 wind_direction_path = "data/Case_01/HKN_12_to_15_dir.csv"
 
 def main():
@@ -31,7 +31,7 @@ def main():
     df_rot = df_rot.reset_index(drop=True)
 
     df_combined = pd.merge(df_rot, df_yaw)
-    df_combined.to_csv("data/Case_01/measurements_turbines/30000_BL/rot_yaw_combined.csv")
+    df_combined.to_csv("data/Case_01/measurements_turbines/30000_LuT2deg_internal/rot_yaw_combined.csv")
 
     wind_direction = pd.read_csv(wind_direction_path, header=None)
     wind_direction.columns = ["time", "direction"]
@@ -51,5 +51,4 @@ def main():
 
 
 if __name__ == "__main__":
-    print(os.getcwd())
     main()
