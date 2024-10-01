@@ -12,19 +12,21 @@ from utils.preprocessing import resize_windspeed
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+
 def load_config(case):
     return {
         "case": case,
         "root_dir": f"../../data/Case_0{case}/measurements_flow/postProcessing_BL/windspeedMapScalars",
         "sequence_length": 50,
         "batch_size": 4,
-        "scale": (128,128)
+        "scale": (128, 128)
     }
 
 
 def create_transform(scale):
     def resize_scalars(windspeed_scalars):
         return [resize_windspeed(scalar, scale) for scalar in windspeed_scalars]
+
     return resize_scalars
 
 
@@ -37,7 +39,6 @@ def run():
     batch_size = config["batch_size"]
     scale = config["scale"]
 
-
     train_loader, val_loader, test_loader = create_data_loaders(root_dir, sequence_length, batch_size,
                                                                 transform=create_transform(scale))
     model = WindspeedLSTM(sequence_length, 300).to(device)
@@ -47,6 +48,7 @@ def run():
     save_config(output_folder, config)
 
     train(model, train_loader, val_loader, output_folder)
+
 
 def train(model, train_loader, val_loader, output_folder):
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
@@ -100,15 +102,18 @@ def train(model, train_loader, val_loader, output_folder):
             print(f'Early stopping at epoch {epoch}')
             break
 
+
 def create_output_folder(case_nr):
     time = datetime.now().strftime('%Y%m%d%H%M%S')
     output_folder = f"results/{time}_Case0{case_nr}"
     os.makedirs(f"{output_folder}/model")
     return output_folder
 
+
 def save_config(output_folder, config):
     with open(f"{output_folder}/config.json", 'w') as f:
         json.dump(config, f)
+
 
 if __name__ == '__main__':
     run()
