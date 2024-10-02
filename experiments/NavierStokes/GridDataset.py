@@ -8,11 +8,25 @@ import pandas as pd
 
 
 class GridDataset(Dataset):
-    def __init__(self, dir, turbine_csv, wind_csv, only_grid_values=False):
+    def __init__(self, dir, turbine_csv, wind_csv, use_wake=False, wake_dir=None, wake_turbine_csv=None, only_grid_values=False):
         super().__init__()
         self.dir = dir
         self.files = os.listdir(self.dir)
         self.files.remove("README.md")
+
+        self.use_wake = use_wake
+
+        if (self.use_wake):
+            if (not isinstance(wake_dir, str)):
+                raise TypeError("Provide wake steering directory")
+            
+            self.wake_dir = wake_dir
+            self.wake_files = os.listdir(self.wake_dir)
+
+            self.df_turbines_wake = pd.read_csv(wake_turbine_csv, index_col=0)
+
+        else:
+            self.wake_dir = None
 
         self.only_grid_values = only_grid_values
         
@@ -24,8 +38,14 @@ class GridDataset(Dataset):
         self.df_turbines = pd.read_csv(turbine_csv, index_col=0)
         self.df_wind = pd.read_csv(wind_csv, index_col=0)
 
-    def get_turbine_data(self, time):
-        time_instance = self.df_turbines[self.df_turbines['time'] == time][['speed', 'yaw_sin', "yaw_cos"]]
+    def get_turbine_data(self, time, is_wake_steering):
+        if (is_wake_steering):
+            df = self.df_turbines_wake
+        else:
+            df = self.df_turbines
+
+        time_instance = df[df['time'] == time][['speed', 'yaw_sin', "yaw_cos"]]
+
         return torch.from_numpy(time_instance.to_numpy().flatten()).unsqueeze(0)
     
 
@@ -35,12 +55,30 @@ class GridDataset(Dataset):
 
 
     def __len__(self):
-        return len(self.files)
+        if (not self.use_wake):
+            return len(self.files)
+        
+        return len(self.files) + len(self.wake_files)
+    
+
+    def is_index_wake_steering(self, index):
+        if (not self.use_wake):
+            return False, index
+        
+        files_per_case = len(self.files)
+        is_wake_steering = False if (index // files_per_case == 0) else True
+        index = index % files_per_case
+
+        return is_wake_steering, index
 
     def __getitem__(self, index):
         if (isinstance(index, int) or isinstance(index, np.int32)):
+            is_wake_steering, index = self.is_index_wake_steering(index)
+            
+            dir = self.wake_dir if is_wake_steering else self.dir
+
             #3x300x300
-            flow_field = torch.from_numpy(np.load(f"{self.dir}{self.files[index]}"))
+            flow_field = torch.from_numpy(np.load(f"{dir}{self.files[index]}"))
             flow_field = flow_field.permute(1, 2, 0).flatten(0, 1) #90000x3
 
             time = int(self.files[index].split(".")[0])
@@ -50,7 +88,7 @@ class GridDataset(Dataset):
                 inputs = torch.concat((self.coords, time_tensor), dim=1)
                 return inputs, flow_field
 
-            turbine_data = self.get_turbine_data(time)
+            turbine_data = self.get_turbine_data(time, is_wake_steering)
             turbine_data = turbine_data.repeat(time_tensor.shape[0], 1)
 
             wind_data = self.get_wind_data(time)
@@ -58,16 +96,7 @@ class GridDataset(Dataset):
 
             inputs = torch.concat((self.coords, time_tensor, turbine_data, wind_data), dim=1)
 
-            return inputs, flow_field
-
-        # elif (isinstance(index, slice)):
-        #     time = list(map(lambda x: int(x.split(".")[0]), self.files[index]))
-        #     flow_field = np.stack([np.load(f"{self.dir}{file}") for file in self.files[index]])
-
-        # elif (torch.is_tensor(index)):
-        #     index = index.tolist()
-        #     time = list(map(lambda x: int(x.split(".")[0]), self.files[index]))
-        #     flow_field = np.stack([np.load(f"{self.dir}{file}") for file in self.files[index]])            
+            return inputs, flow_field        
 
         else:
             raise TypeError(f"{type(index)}")

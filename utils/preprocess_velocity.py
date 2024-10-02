@@ -9,7 +9,7 @@ from tqdm import tqdm
 from preprocessing import import_vtk
 
 
-base_path = "postProcessing_BL/postProcessing_BL/sliceDataInstantaneous"
+base_path = "postProcessing_LuT2deg_internal/postProcessing_LuT2deg_internal/sliceDataInstantaneous"
 all_time_instances = os.listdir(base_path)
 
 def get_velocity_from_vtk(time_step: str):
@@ -24,7 +24,7 @@ def get_velocity_from_vtk(time_step: str):
     w = griddata(centers[:, 0:2], data[:, 2], (x_grid, y_grid), method='linear')
     field = np.stack([u, v, w])
 
-    np.save(f"data/Case_01/measurements_flow/postProcessing_BL/winSpeedMapVector/{time_step}.npy", field)
+    np.save(f"data/Case_01/measurements_flow/postProcessing_LuT2deg_internal/winSpeedMapVector/{time_step}.npy", field)
 
 def main():
     with ProcessPoolExecutor(max_workers=10) as executor:
