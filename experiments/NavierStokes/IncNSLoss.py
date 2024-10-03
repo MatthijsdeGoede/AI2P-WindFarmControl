@@ -123,13 +123,40 @@ def calculate_grads(input, output):
      
 
 class NSLoss(torch.nn.Module):
-    def __init__(self, physics_coef=1):
+    def __init__(self, physics_coef=1, alpha=1.0573, max_value=1000):
         super().__init__()
-        self.physics_coef = physics_coef
+        self._physics_coef = physics_coef
+        self.max_value = max_value
+
+        #alpha=1.0573 because I wanted reach a physics coefficient
+        #of 1000 around the 125 epoch. Starting from 1, and multiplying by
+        #alpha every epoch reaches 1000 around the 124-125 epoch.
+        #log_{alpha}(1000) = 123.98
+        self.alpha = alpha 
     
     def forward(self, input, output, target):
         data = data_loss_func(output, target)
         physics = physics_loss_func(input, output)
-        total_loss = data + self.physics_coef * physics
+        total_loss = data + self._physics_coef * physics
         
         return  total_loss, data, physics
+    
+    def increase(self):
+        self.physics_coef *= self.alpha
+    
+    def set_physics_on_epoch(self, epoch: int):
+        """
+        This function is to be used when loading from a checkpoint. The goal is 
+        to make the physics coefficient consistent with the last training epoch.
+        """
+        self.physics_coef = pow(self.alpha, epoch)
+
+    @property
+    def physics_coef(self):
+        return self._physics_coef
+    
+    @physics_coef.setter
+    def physics_coef(self, value):
+        self._physics_coef = min(value, self.max_value)
+        
+
