@@ -55,29 +55,28 @@ def load_model_optimizer(model, optimizer, model_save_path):
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
-    return max_epoch
+    return max_epoch, checkpoint["train_losses"], checkpoint["val_losses"]
 
 
-def main(physics_coef: int, hidden_size: int, only_grid: bool, data_type: str, model_save_path: str, load_checkpoint: bool, increase_physics: bool):
+def main(physics_coef: int, hidden_size: int, only_grid: bool, data_type: str, model_save_path: str, use_checkpoint: bool, increase_physics: bool, alpha: float):
     train_loader, val_loader, MIN_TIME, MAX_TIME = load_data(data_type, only_grid)
 
     in_features = 3 if only_grid else 35
 
     model = PINN(in_dimensions=in_features, hidden_size=hidden_size).cuda()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    criterion = NSLoss(physics_coef=physics_coef)
-
-    start_epoch = 0
-    end_epoch = 300
-    if (load_checkpoint):
-        start_epoch = load_model_optimizer(model, optimizer, model_save_path)
-        end_epoch = start_epoch + 300
-
-        if (increase_physics): criterion.set_physics_on_epoch(start_epoch)
-
+    criterion = NSLoss(physics_coef=physics_coef, alpha=alpha)
 
     train_losses = defaultdict(list)
     val_losses = defaultdict(list)
+
+    start_epoch = 0
+    end_epoch = 300
+    if (use_checkpoint):
+        start_epoch, train_losses, val_losses = load_model_optimizer(model, optimizer, model_save_path)
+        end_epoch = start_epoch + 300
+
+        if (increase_physics): criterion.set_physics_on_epoch(start_epoch)
 
     for epoch in tqdm(range(start_epoch+1, end_epoch+1)):
         model.train()
@@ -146,7 +145,7 @@ def main(physics_coef: int, hidden_size: int, only_grid: bool, data_type: str, m
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train your PINN model.")
 
-    parser.add_argument("--physics", type=int, default=1, help="Physics loss multiplier")
+    parser.add_argument("--physics", type=int, default=10, help="Physics loss multiplier")
     parser.add_argument("--hidden-size", type=int, default=128)
     parser.add_argument("--only-grid", type=bool, action=argparse.BooleanOptionalAction, default=False)
     #possible options are: wake, no-wake, both
@@ -154,6 +153,7 @@ if __name__ == "__main__":
     parser.add_argument("--use-checkpoint", type=bool, default=False, action=argparse.BooleanOptionalAction)
     #Allowing this option overrides --physics argument
     parser.add_argument("--increase-physics", type=bool, default=False, action=argparse.BooleanOptionalAction)
+    parser.add_argument("--alpha", type=float, default=1.0537)
     parser.add_argument("--save-path", type=str, default=None)
 
     args = parser.parse_args()
@@ -163,11 +163,11 @@ if __name__ == "__main__":
 
     if (args.increase_physics):
         physics = 1
-        model_save_path = f"models/SiLU{args.hidden_size}-pVar-{args.data_type}"
+        model_save_path = f"models/SiLU{args.hidden_size}-pVar-{args.alpha}-{args.data_type}"
 
     if (args.save_path):
         model_save_path = args.save_path
 
     os.makedirs(model_save_path, exist_ok=True)
 
-    main(physics, args.hidden_size, args.only_grid, args.data_type, model_save_path, args.load_checkpoint, args.increase_physics)
+    main(physics, args.hidden_size, args.only_grid, args.data_type, model_save_path, args.use_checkpoint, args.increase_physics, args.alpha)
