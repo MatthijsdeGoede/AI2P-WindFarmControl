@@ -4,6 +4,7 @@ from six import print_
 from architecture.gch_unet.unet_parts import *
 from utils.timing import *
 
+
 class CustomUNet(nn.Module):
     def __init__(self, n_channels, n_classes, center_nn, bilinear=False):
         super(CustomUNet, self).__init__()

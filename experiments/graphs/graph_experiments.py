@@ -59,7 +59,7 @@ def custom_collate_fn(batch):
     return [Data.from_data_list(seq) for seq in batch]
 
 
-def create_data_loaders(dataset, batch_size, custom_collate=None, num_workers=1):
+def create_data_loaders(dataset, batch_size, custom_collate=None, num_workers=4):
     total_size = len(dataset)
     train_size = int(0.7 * total_size)
     val_size = int(0.1 * total_size)
@@ -88,16 +88,16 @@ def compute_loss(batch, criterion, model):
             pos.reshape(batch_size, -1),
             edge_attr.reshape(batch_size, -1),
             glob.reshape(batch_size, -1)
-        ), dim=-1).float()
+        ), dim=-1)
 
-        pred = model(x_cat)
+        pred = model(x_cat).float()
         target = batch.y.to(device).reshape(-1, pred.size(1))
         loss = criterion(pred, target)
     else:
-        nf = torch.cat((batch.x.to(device), batch.pos.to(device)), dim=-1).float()
-        ef = batch.edge_attr.to(device).float()
-        gf = batch.global_feats.to(device).float()
-        pred = model(batch, nf, ef, gf)
+        nf = torch.cat((batch.x.to(device), batch.pos.to(device)), dim=-1)
+        ef = batch.edge_attr.to(device)
+        gf = batch.global_feats.to(device)
+        pred = model(batch, nf, ef, gf).float()
         target = batch.y.to(device).reshape(-1, pred.size(1))
         loss = criterion(pred, target)
     return loss
@@ -296,7 +296,6 @@ def run(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size):
 
     output_folder = create_output_folder(train_cfg, net_type)
     save_config(output_folder, train_cfg)
-    seq_length = train_cfg['seq_length']
 
     dataset = GraphTemporalDataset(root=data_folder, seq_length=seq_length) if seq_length > 1 else GraphDataset(root=data_folder)
     collate = custom_collate_fn if seq_length > 1 else None
@@ -311,12 +310,22 @@ def run(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Run experiments with different configurations.')
-    parser.add_argument('--case_nr', type=int, default=1, help='Case number to use for the experiment (default: 1)')
-    parser.add_argument('--wake_steering', action='store_true', help='Enable wake steering (default: False)')
-    parser.add_argument('--max_angle', type=int, default=90, help='Maximum angle for the experiment (default: 90)')
-    parser.add_argument('--use_graph', action='store_true', help='Use graph representation (default: False)')
-    parser.add_argument('--seq_length', type=int, default=1, help='Sequence length for the experiment (default: 1)')
-    parser.add_argument('--batch_size', type=int, default=4, help='Batch size for the experiment (default: 4)')
-    args = parser.parse_args()
-    run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size)
+    # parser = argparse.ArgumentParser(description='Run experiments with different configurations.')
+    # parser.add_argument('--case_nr', type=int, default=1, help='Case number to use for the experiment (default: 1)')
+    # parser.add_argument('--wake_steering', action='store_true', help='Enable wake steering (default: False)')
+    # parser.add_argument('--max_angle', type=int, default=90, help='Maximum angle for the experiment (default: 90)')
+    # parser.add_argument('--use_graph', action='store_true', help='Use graph representation (default: False)')
+    # parser.add_argument('--seq_length', type=int, default=1, help='Sequence length for the experiment (default: 1)')
+    # parser.add_argument('--batch_size', type=int, default=4, help='Batch size for the experiment (default: 4)')
+    # args = parser.parse_args()
+    # run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size)
+
+    run(1, False, 30, True, 1, 64)
+    run(1, False, 90, True, 1, 64)
+    run(1, False, 360, True, 1, 64)
+    run(1, False, 360, False, 1, 64)
+
+    run(1, True, 30, True, 1, 64)
+    run(1, True, 90, True, 1, 64)
+    run(1, True, 360, True, 1, 64)
+    run(1, True, 360, False, 1, 64)
