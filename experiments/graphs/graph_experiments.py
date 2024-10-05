@@ -1,23 +1,19 @@
+import argparse
 import json
-import multiprocessing
-
+import os
 import torch
 
 import numpy as np
 import torch.nn as nn
 
-from adamp import AdamP
+from datetime import datetime
 from torch.optim import Adam
-from box import Box
-from torch_geometric.data import Dataset, Data, Batch
+from torch_geometric.data import Dataset, Data
 from torch_geometric.loader import DataLoader
 from torch.utils.data import random_split
+
 from architecture.pignn.pignn import FlowPIGNN
 from architecture.pignn.deconv import FCDeConvNet
-
-import os
-from datetime import datetime
-
 from architecture.windspeedLSTM.windspeedLSTM import WindspeedLSTM
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -63,14 +59,13 @@ def custom_collate_fn(batch):
     return [Data.from_data_list(seq) for seq in batch]
 
 
-def create_data_loaders(dataset, batch_size, custom_collate=None):
+def create_data_loaders(dataset, batch_size, custom_collate=None, num_workers=1):
     total_size = len(dataset)
     train_size = int(0.7 * total_size)
     val_size = int(0.1 * total_size)
     test_size = total_size - train_size - val_size
 
     train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
-    num_workers = multiprocessing.cpu_count()
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=num_workers)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=num_workers)
@@ -134,11 +129,11 @@ def eval_epoch(val_loader, model, criterion):
 
 
 def train(model, train_params, train_loader, val_loader, output_folder):
-    optimizer = AdamP(model.parameters(), lr=1e-3) if torch.cuda.is_available() else Adam(model.parameters(), lr=1e-3)
+    optimizer = Adam(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50)
 
-    num_epochs = train_params.num_epochs
+    num_epochs = train_params['num_epochs']
     best_loss = float('inf')
     epochs_no_improve = 0
 
@@ -159,7 +154,7 @@ def train(model, train_params, train_loader, val_loader, output_folder):
         else:
             epochs_no_improve += 1
 
-        if epochs_no_improve >= train_params.early_stop_after:
+        if epochs_no_improve >= train_params['early_stop_after']:
             print(f'Early stopping at epoch {epoch}')
             break
 
@@ -210,11 +205,11 @@ def eval_temporal_epoch(val_loader, graph_model, temporal_model, criterion):
 
 
 def train_temporal(graph_model, temporal_model, train_params, train_loader, val_loader, output_folder):
-    optimizer = torch.optim.Adam(list(graph_model.parameters()) + list(temporal_model.parameters()), lr=0.01)
+    optimizer = Adam(list(graph_model.parameters()) + list(temporal_model.parameters()), lr=0.01)
     criterion = nn.MSELoss()
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50)
 
-    num_epochs = train_params.num_epochs
+    num_epochs = train_params['num_epochs']
     best_loss = float('inf')
     epochs_no_improve = 0
 
@@ -236,15 +231,15 @@ def train_temporal(graph_model, temporal_model, train_params, train_loader, val_
         else:
             epochs_no_improve += 1
 
-        if epochs_no_improve >= train_params.early_stop_after:
+        if epochs_no_improve >= train_params['early_stop_after']:
             print(f'Early stopping at epoch {epoch}')
             break
 
 
 def create_output_folder(train_config, net_type):
     time = datetime.now().strftime('%Y%m%d%H%M%S')
-    output_folder = f"results/{time}_Case0{train_config.case_nr}_{train_config.wake_steering}_{net_type}_" \
-                    f"{train_config.seq_length}"
+    output_folder = f"results/{time}_Case0{train_config['case_nr']}_{train_config['wake_steering']}_{net_type}_" \
+                    f"{train_config['seq_length']}"
     os.makedirs(output_folder)
     return output_folder
 
@@ -279,11 +274,8 @@ def get_pignn_config():
     }
 
 
-def get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True, num_epochs=100, seq_length=1,
-               early_stop_after=5, batch_size=4):
-    cfg = Box({
-        'model': get_pignn_config(),
-        'train': {
+def get_config(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, num_epochs=100, early_stop_after=5):
+    return get_pignn_config(), {
             'case_nr': case_nr,
             'wake_steering': wake_steering,
             'max_angle': max_angle,
@@ -293,50 +285,38 @@ def get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True, num
             'batch_size': batch_size,
             'seq_length': seq_length,
         }
-    })
-    return cfg
 
 
-def run_experiments():
-    experiment_cfgs = [
-        get_config(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length=50),
-        # get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True),
-        # get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=True),
-        # get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=False),
-        #
-        # get_config(case_nr=1, wake_steering=True, max_angle=30, use_graph=True),
-        # get_config(case_nr=1, wake_steering=True, max_angle=90, use_graph=True),
-        # get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=True),
-        # get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=False),
-        #
-        # get_config(case_nr=2, wake_steering=False, max_angle=30, use_graph=True),
-        # get_config(case_nr=2, wake_steering=False, max_angle=90, use_graph=True),
-        # get_config(case_nr=2, wake_steering=False, max_angle=360, use_graph=True),
-        # get_config(case_nr=2, wake_steering=False, max_angle=360, use_graph=False),
-    ]
+def run(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size):
+    model_cfg, train_cfg = get_config(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size)
 
-    for i, cfg in enumerate(experiment_cfgs):
-        post_fix = "LuT2deg_internal" if cfg.train.wake_steering else "BL"
-        net_type = f"pignn_deconv_{cfg.train.max_angle}" if cfg.train.use_graph else "fcn_deconv"
-        data_folder = f"../../data/Case_0{cfg.train.case_nr}/graphs/{post_fix}/{cfg.train.max_angle}"
+    post_fix = "LuT2deg_internal" if train_cfg['wake_steering'] else "BL"
+    net_type = f"pignn_deconv_{train_cfg['max_angle']}" if train_cfg['use_graph'] else "fcn_deconv"
+    data_folder = f"../../data/Case_0{train_cfg['case_nr']}/graphs/{post_fix}/{train_cfg['max_angle']}"
 
-        output_folder = create_output_folder(cfg.train, net_type)
-        save_config(output_folder, cfg)
-        seq_length = cfg.train.seq_length
+    output_folder = create_output_folder(train_cfg, net_type)
+    save_config(output_folder, train_cfg)
+    seq_length = train_cfg['seq_length']
 
-        dataset = GraphTemporalDataset(root=data_folder, seq_length=seq_length) if seq_length > 1 else GraphDataset(root=data_folder)
-        collate = custom_collate_fn if seq_length > 1 else None
-        train_loader, val_loader, test_loader = create_data_loaders(dataset, cfg.train.batch_size, collate)
-        graph_model = FlowPIGNN(**cfg.model).to(device) if cfg.train.use_graph else FCDeConvNet(232, 650, 656, 500).to(device)
+    dataset = GraphTemporalDataset(root=data_folder, seq_length=seq_length) if seq_length > 1 else GraphDataset(root=data_folder)
+    collate = custom_collate_fn if seq_length > 1 else None
+    train_loader, val_loader, test_loader = create_data_loaders(dataset, train_cfg['batch_size'], collate)
+    graph_model = FlowPIGNN(**model_cfg).to(device) if train_cfg['use_graph'] else FCDeConvNet(232, 650, 656, 500).to(device)
 
-        if seq_length > 1:
-            temporal_model = WindspeedLSTM(seq_length, 128).to(device)
-            train_temporal(graph_model, temporal_model, cfg.train, train_loader, val_loader, output_folder)
-        else:
-            train(graph_model, cfg.train, train_loader, val_loader, output_folder)
-
-        print(f"Running experiment {i + 1}/{len(experiment_cfgs)}")
+    if seq_length > 1:
+        temporal_model = WindspeedLSTM(seq_length, 128).to(device)
+        train_temporal(graph_model, temporal_model, train_cfg, train_loader, val_loader, output_folder)
+    else:
+        train(graph_model, train_cfg, train_loader, val_loader, output_folder)
 
 
 if __name__ == "__main__":
-    run_experiments()
+    parser = argparse.ArgumentParser(description='Run experiments with different configurations.')
+    parser.add_argument('--case_nr', type=int, default=1, help='Case number to use for the experiment (default: 1)')
+    parser.add_argument('--wake_steering', action='store_true', help='Enable wake steering (default: False)')
+    parser.add_argument('--max_angle', type=int, default=90, help='Maximum angle for the experiment (default: 90)')
+    parser.add_argument('--use_graph', action='store_true', help='Use graph representation (default: False)')
+    parser.add_argument('--seq_length', type=int, default=1, help='Sequence length for the experiment (default: 1)')
+    parser.add_argument('--batch_size', type=int, default=4, help='Batch size for the experiment (default: 4)')
+    args = parser.parse_args()
+    run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size)
