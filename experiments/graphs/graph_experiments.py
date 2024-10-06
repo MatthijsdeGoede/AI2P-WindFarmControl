@@ -276,15 +276,15 @@ def get_pignn_config():
 
 def get_config(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, num_epochs=100, early_stop_after=5):
     return get_pignn_config(), {
-            'case_nr': case_nr,
-            'wake_steering': wake_steering,
-            'max_angle': max_angle,
-            'num_epochs': num_epochs,
-            'use_graph': use_graph,
-            'early_stop_after': early_stop_after,
-            'batch_size': batch_size,
-            'seq_length': seq_length,
-        }
+        'case_nr': case_nr,
+        'wake_steering': wake_steering,
+        'max_angle': max_angle,
+        'num_epochs': num_epochs,
+        'use_graph': use_graph,
+        'early_stop_after': early_stop_after,
+        'batch_size': batch_size,
+        'seq_length': seq_length,
+    }
 
 
 def run(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size):
@@ -320,12 +320,12 @@ if __name__ == "__main__":
     # args = parser.parse_args()
     # run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size)
 
-    run(1, False, 30, True, 1, 64)
-    run(1, False, 90, True, 1, 64)
-    run(1, False, 360, True, 1, 64)
-    run(1, False, 360, False, 1, 64)
+    run(1, False, 30, True, 50, 64)
+    run(1, False, 90, True, 50, 64)
+    run(1, False, 360, True, 50, 64)
+    run(1, False, 360, False, 50, 64)
 
-    run(1, True, 30, True, 1, 64)
-    run(1, True, 90, True, 1, 64)
-    run(1, True, 360, True, 1, 64)
-    run(1, True, 360, False, 1, 64)
+    run(1, True, 30, True, 50, 64)
+    run(1, True, 90, True, 50, 64)
+    run(1, True, 360, True, 50, 64)
+    run(1, True, 360, False, 50, 64)

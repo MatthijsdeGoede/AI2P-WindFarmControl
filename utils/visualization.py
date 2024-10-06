@@ -78,7 +78,7 @@ def add_quiver(ax, wind_vec):
     ax.quiver(150, 150, wind_vec[0], wind_vec[1],
                angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
 
-def add_imshow(fig, ax, umean_abs):
+def add_imshow(fig, ax, umean_abs, color_bar=False):
     axesImage = ax.imshow(umean_abs, extent=(0, 300, 0, 300), origin='lower', aspect='auto')
     fig.colorbar(axesImage, ax=ax, label='Mean Velocity (UmeanAbs)')
     ax.set_xlabel('X-axis')
@@ -102,30 +102,36 @@ def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file):
     plt.show()
 
 
-def plot_graph(G, wind_vec, max_angle=90):
+def plot_graph(G, wind_vec, max_angle=90, ax=None):
     pos_dict = nx.get_node_attributes(G, 'pos')
-    plt.figure(figsize=(10, 8))
+
+    # Use the axis if provided, otherwise use the current figure
+    if ax is None:
+        plt.figure(figsize=(10, 8))
+        ax = plt.gca()
+
     # Draw nodes
-    nx.draw_networkx_nodes(G, pos_dict, node_size=500, node_color='lightblue')
+    nx.draw_networkx_nodes(G, pos_dict, node_size=500, node_color='lightblue', ax=ax)
     # Draw edges
-    nx.draw_networkx_edges(G, pos_dict, edgelist=G.edges(), arrowstyle='-|>', arrowsize=20)
+    nx.draw_networkx_edges(G, pos_dict, edgelist=G.edges(), arrowstyle='-|>', arrowsize=20, ax=ax)
     # Draw node labels
-    nx.draw_networkx_labels(G, pos_dict, font_size=12, font_family='sans-serif')
+    nx.draw_networkx_labels(G, pos_dict, font_size=12, font_family='sans-serif', ax=ax)
+
     # Draw wind direction
     wind_start = np.mean(np.array(list(pos_dict.values())), axis=0)
     scaled_wind_vec = 1000 * wind_vec
-    plt.quiver(wind_start[0], wind_start[1], scaled_wind_vec[0], scaled_wind_vec[1],
-               angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
-    plt.legend()
-    plt.title(f"Turbine Graph with Wind Direction (max angle: {max_angle})")
-    plt.xlabel("X Coordinate")
-    plt.ylabel("Y Coordinate")
-    plt.grid(True)
-    plt.axis("equal")
-    plt.show()
+    ax.quiver(wind_start[0], wind_start[1], scaled_wind_vec[0], scaled_wind_vec[1],
+              angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
+
+    ax.legend()
+    ax.set_title(f"Max Angle: {max_angle}")
+    ax.set_xlabel("X Coordinate")
+    ax.set_ylabel("Y Coordinate")
+    ax.grid(True)
+    ax.set_aspect('equal')
 
 
-def plot_prediction_vs_real(predicted, target, case=1):
+def plot_prediction_vs_real(predicted, target, case=1, number=0):
 
     layout_file = get_layout_file(case)
 
@@ -133,17 +139,21 @@ def plot_prediction_vs_real(predicted, target, case=1):
 
     # Plot target
     add_imshow(fig, axs[0], target)
-    axs[0].set_title('Target UmeanAbs')
+    axs[0].set_title('Target')
+    axs[0].set_aspect('equal', adjustable='box')  # Maintain aspect ratio
     add_windmills(axs[0], layout_file)
 
     # Plot predicted
     add_imshow(fig, axs[1], predicted)
-    axs[1].set_title('Predicted UmeanAbs')
+    axs[1].set_title('Predicted')
+    axs[1].set_aspect('equal', adjustable='box')  # Maintain aspect ratio
     add_windmills(axs[1], layout_file)
 
     # Adjust layout
     plt.tight_layout()
+    plt.savefig(f'predictions_vs_targets_{number}.pdf', format='pdf', bbox_inches='tight')
     plt.show()
+
 
 
 def animate_prediction_vs_real(umean_callback, n_frames=100, file_path="animation"):
