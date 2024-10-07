@@ -19,14 +19,16 @@ generator = torch.Generator()
 generator.manual_seed(42)
 
 
-def load_data(data_type: str, only_grid: bool):
+def load_data(data_type: str, only_grid: bool, use_sampling: bool, samples_per_grid: int):
     dataset = GridDataset(dir="data/Case_01/measurements_flow/postProcessing_BL/winSpeedMapVector/",
                         turbine_csv="data/Case_01/measurements_turbines/30000_BL/rot_yaw_combined.csv",
                         wind_csv="data/Case_01/winDir_processed.csv", 
                         data_type=data_type, 
                         wake_dir="data/Case_01/measurements_flow/postProcessing_LuT2deg_internal/winSpeedMapVector/",
                         wake_turbine_csv="data/Case_01/measurements_turbines/30000_LuT2deg_internal/rot_yaw_combined.csv",
-                        only_grid_values=only_grid)
+                        only_grid_values=only_grid,
+                        sampling=use_sampling,
+                        samples_per_grid=samples_per_grid)
 
     MIN_TIME, MAX_TIME = dataset[0][0][:, 2][0].item(), dataset[-1][0][:, 2][0].item()
 
@@ -70,7 +72,7 @@ def main(physics_coef: int,
          sample_size: int
     ):
 
-    train_loader, val_loader, MIN_TIME, MAX_TIME = load_data(data_type, only_grid)
+    train_loader, val_loader, MIN_TIME, MAX_TIME = load_data(data_type, only_grid, use_sampling, sample_size)
 
     in_features = 3 if only_grid else 35
 
