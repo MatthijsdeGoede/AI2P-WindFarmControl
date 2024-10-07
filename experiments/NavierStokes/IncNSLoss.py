@@ -101,7 +101,6 @@ def calculate_grads(input, output):
     u_grad = autograd.grad(u_pred, input, grad_outputs=torch.ones_like(u_pred), create_graph=True)[0][:, :3]
     v_grad = autograd.grad(v_pred, input, grad_outputs=torch.ones_like(v_pred), create_graph=True)[0][:, :3]
     w_grad = autograd.grad(w_pred, input, grad_outputs=torch.ones_like(w_pred), create_graph=True)[0][:, :3]
-    rho_grad = autograd.grad(rho_pred, input, grad_outputs=torch.ones_like(rho_pred), create_graph=True)[0][:, :3]
     p_grad = autograd.grad(p_pred, input, grad_outputs=torch.ones_like(p_pred), create_graph=True)[0][:, :3]
 
     #These are technicaly not hessians but it's close
@@ -112,7 +111,6 @@ def calculate_grads(input, output):
     grads = {"u_grad": u_grad,
              "v_grad": v_grad,
              "w_grad": w_grad,
-             "rho_grad": rho_grad,
              "p_grad": p_grad,
              "u_hessian": u_hessian,
              "v_hessian": v_hessian,
@@ -123,16 +121,20 @@ def calculate_grads(input, output):
      
 
 class NSLoss(torch.nn.Module):
-    def __init__(self, physics_coef=1, alpha=1.0573, max_value=1000):
+    def __init__(self, physics_coef=1, target_epoch=150, max_value=100):
         super().__init__()
-        self._physics_coef = physics_coef
         self.max_value = max_value
+        self._physics_coef = physics_coef
 
-        #alpha=1.0573 because I wanted reach a physics coefficient
-        #of 1000 around the 125 epoch. Starting from 1, and multiplying by
-        #alpha every epoch reaches 1000 around the 124-125 epoch.
-        #log_{alpha}(1000) = 123.98
-        self.alpha = alpha 
+        self.calculate_alpha(target_epoch)
+
+    def calculate_alpha(self, target_epoch):
+        """
+        Calculates the alpha (physics coefficient multiplier) based on reaching
+        the max value at the target epoch. Assumes starting at 1.
+        """
+        self.alpha = self.max_value ** (1/target_epoch)
+
     
     def forward(self, input, output, target):
         data = data_loss_func(output, target)
