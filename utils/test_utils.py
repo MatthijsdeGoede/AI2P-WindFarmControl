@@ -1,3 +1,5 @@
+from matplotlib import pyplot as plt
+
 from utils.preprocessing import (read_wind_angles, read_turbine_positions, get_wind_vec_at_time,
                                  create_turbine_nx_graph,
                                  read_wind_speed_scalars, resize_windspeed)
@@ -11,10 +13,25 @@ def test_graph_creation_plotting():
     wind_angles = read_wind_angles(f"../data/Case_0{case}/HKN_{turbines}_dir.csv")
     turbine_pos = read_turbine_positions(layout_file)
     timestep = 430
-    max_angle = 90
     wind_vec = get_wind_vec_at_time(wind_angles, timestep)
-    graph = create_turbine_nx_graph(turbine_pos, wind_vec, max_angle=max_angle)
-    plot_graph(graph, wind_vec, max_angle=max_angle)
+
+    # Define max_angle values to loop over
+    max_angles = [30, 90, 360]
+
+    # Create subplots for each max_angle
+    fig, axs = plt.subplots(1, len(max_angles), figsize=(15, 5))
+
+    # Loop through each max_angle and plot the graph on respective axes
+    for i, max_angle in enumerate(max_angles):
+        graph = create_turbine_nx_graph(turbine_pos, wind_vec, max_angle=max_angle)
+
+        # Pass each subplot axis to plot_graph
+        plot_graph(graph, wind_vec, max_angle=max_angle, ax=axs[i])
+
+    # Display all plots side by side
+    plt.tight_layout()
+    plt.savefig("turbine_graphs.pdf")
+    plt.show()
 
     # animate_mean_absolute_speed(30005)
     # umean_abs, x_axis, y_axis = vtk_to_umean_abs(
