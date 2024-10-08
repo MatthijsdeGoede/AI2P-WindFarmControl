@@ -206,7 +206,7 @@ def eval_temporal_epoch(val_loader, graph_model, temporal_model, criterion):
 
 def train_temporal(graph_model, temporal_model, train_params, train_loader, val_loader, output_folder):
     optimizer = Adam(list(graph_model.parameters()) + list(temporal_model.parameters()), lr=0.01)
-    criterion = nn.MSELoss()
+    criterion = nn.MSELoss().to(device)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50)
 
     num_epochs = train_params['num_epochs']
@@ -214,26 +214,28 @@ def train_temporal(graph_model, temporal_model, train_params, train_loader, val_
     epochs_no_improve = 0
 
     for epoch in range(1, num_epochs + 1):
-        # Perform a training and validation epoch
-        train_loss = train_temporal_epoch(train_loader, graph_model, temporal_model, criterion, optimizer, scheduler)
-        val_loss = eval_temporal_epoch(val_loader, graph_model, temporal_model, criterion)
-        learning_rate = optimizer.param_groups[0]['lr']
-        print(f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {train_loss}, validation loss: {val_loss}")
+        with torch.autograd.profiler.profile(use_cuda=True) as prof:
+            # Perform a training and validation epoch
+            train_loss = train_temporal_epoch(train_loader, graph_model, temporal_model, criterion, optimizer, scheduler)
+            val_loss = eval_temporal_epoch(val_loader, graph_model, temporal_model, criterion)
+            learning_rate = optimizer.param_groups[0]['lr']
+            print(f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {train_loss}, validation loss: {val_loss}")
 
-        # Save model pointers
-        torch.save(graph_model.state_dict(), f"{output_folder}/pignn_{epoch}.pt")
-        torch.save(temporal_model.state_dict(), f"{output_folder}/unet_lstm_{epoch}.pt")
+            # Save model pointers
+            torch.save(graph_model.state_dict(), f"{output_folder}/pignn_{epoch}.pt")
+            torch.save(temporal_model.state_dict(), f"{output_folder}/unet_lstm_{epoch}.pt")
 
-        # Check early stopping criterion
-        if val_loss < best_loss:
-            best_loss = val_loss
-            epochs_no_improve = 0
-        else:
-            epochs_no_improve += 1
+            # Check early stopping criterion
+            if val_loss < best_loss:
+                best_loss = val_loss
+                epochs_no_improve = 0
+            else:
+                epochs_no_improve += 1
 
-        if epochs_no_improve >= train_params['early_stop_after']:
-            print(f'Early stopping at epoch {epoch}')
-            break
+            if epochs_no_improve >= train_params['early_stop_after']:
+                print(f'Early stopping at epoch {epoch}')
+                break
+        print(prof.key_averages().table(sort_by="cuda_time_total"))
 
 
 def create_output_folder(train_config, net_type):
@@ -320,12 +322,12 @@ if __name__ == "__main__":
     # args = parser.parse_args()
     # run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size)
 
-    run(1, False, 30, True, 50, 64)
-    run(1, False, 90, True, 50, 64)
-    run(1, False, 360, True, 50, 64)
-    run(1, False, 360, False, 50, 64)
+    run(1, False, 30, True, 1, 64)
+    run(1, False, 90, True, 1, 64)
+    run(1, False, 360, True, 1, 64)
+    run(1, False, 360, False, 1, 64)
 
-    run(1, True, 30, True, 50, 64)
-    run(1, True, 90, True, 50, 64)
-    run(1, True, 360, True, 50, 64)
-    run(1, True, 360, False, 50, 64)
+    run(1, True, 30, True, 1, 64)
+    run(1, True, 90, True, 1, 64)
+    run(1, True, 360, True, 1, 64)
+    run(1, True, 360, False, 1, 64)

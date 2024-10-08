@@ -9,7 +9,6 @@ from torch_geometric.data import Data
 
 from skimage.transform import resize
 
-
 def prepare_graph_training_data():
     case_nr = 1
     wake_steering = False
@@ -19,7 +18,7 @@ def prepare_graph_training_data():
     max_ts = 42000
     step = 5
     data_range = range(min_ts, max_ts + 1, step)
-    max_angle = 90
+    max_angle = 30
 
     data_dir = f"../../data/Case_0{case_nr}"
     flow_data_dir = f"{data_dir}/measurements_flow/postProcessing_{type}"
