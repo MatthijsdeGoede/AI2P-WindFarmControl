@@ -3,8 +3,6 @@ import torch
 
 from architecture.windspeedLSTM.custom_unet import CustomUNet
 
-torch.set_default_dtype(torch.float64)
-
 
 class WindspeedLSTM(nn.Module):
     def __init__(self, sequence_length, input_size):

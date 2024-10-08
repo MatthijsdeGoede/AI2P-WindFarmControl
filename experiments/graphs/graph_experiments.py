@@ -59,47 +59,32 @@ def custom_collate_fn(batch):
     return [Data.from_data_list(seq) for seq in batch]
 
 
-def create_data_loaders(dataset, batch_size, custom_collate=None, num_workers=4):
+def create_data_loaders(dataset, batch_size, seq_length):
     total_size = len(dataset)
     train_size = int(0.7 * total_size)
     val_size = int(0.1 * total_size)
     test_size = total_size - train_size - val_size
-
+    collate = custom_collate_fn if seq_length > 1 else None
     train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=num_workers)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=num_workers)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=num_workers)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate, pin_memory=True)
 
     return train_loader, val_loader, test_loader
 
 
 def compute_loss(batch, criterion, model):
+    # Logic to handle different model types
+    x, pos, edge_attr, glob, target = batch.x, batch.pos, batch.edge_attr.float(), batch.global_feats.float(), batch.y
+    # Concatenate features for non-GNN models
     if isinstance(model, FCDeConvNet):
-        # If the model is not a Graph Neural Network, just concatenate everything
-        x = batch.x.to(device)
-        pos = batch.pos.to(device)
-        edge_attr = batch.edge_attr.to(device)
-        glob = batch.global_feats.to(device)
-        batch_size = glob.size(0)
-
-        x_cat = torch.cat((
-            x.reshape(batch_size, -1),
-            pos.reshape(batch_size, -1),
-            edge_attr.reshape(batch_size, -1),
-            glob.reshape(batch_size, -1)
-        ), dim=-1)
-
-        pred = model(x_cat).float()
-        target = batch.y.to(device).reshape(-1, pred.size(1))
-        loss = criterion(pred, target)
+        x_cat = torch.cat([x.flatten(), pos.flatten(), edge_attr.flatten(), glob.flatten()], dim=-1)
+        pred = model(x_cat)
     else:
-        nf = torch.cat((batch.x.to(device), batch.pos.to(device)), dim=-1)
-        ef = batch.edge_attr.to(device)
-        gf = batch.global_feats.to(device)
-        pred = model(batch, nf, ef, gf).float()
-        target = batch.y.to(device).reshape(-1, pred.size(1))
-        loss = criterion(pred, target)
+        nf = torch.cat((x, pos), dim=-1).float()
+        pred = model(batch, nf, edge_attr, glob)
+    loss = criterion(pred, target.reshape((pred.size(0), -1)))
     return loss
 
 
@@ -165,15 +150,15 @@ def process_temporal_batch(batch, graph_model, temporal_model, criterion):
     for i, seq in enumerate(batch[0]):
         # Process graphs in parallel at each timestep for the entire batch
         seq = seq.to(device)
-        nf = torch.cat((seq.x.to(device), seq.pos.to(device)), dim=-1)
-        ef = seq.edge_attr.to(device)
-        gf = seq.global_feats.to(device)
+        nf = torch.cat((seq.x.to(device), seq.pos.to(device)), dim=-1).float()
+        ef = seq.edge_attr.to(device).float()
+        gf = seq.global_feats.to(device).float()
         graph_output = graph_model(seq, nf, ef, gf).reshape(-1, 128, 128)
         generated_img.append(graph_output)
         target_img.append(batch[1][i].y.to(device).reshape(-1, 128, 128))
 
     temporal_img = torch.stack(generated_img, dim=1)
-    output = temporal_model(temporal_img).float()
+    output = temporal_model(temporal_img)
     target = torch.stack(target_img, dim=1)
     return criterion(output, target)
 
@@ -300,8 +285,7 @@ def run(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size):
     save_config(output_folder, train_cfg)
 
     dataset = GraphTemporalDataset(root=data_folder, seq_length=seq_length) if seq_length > 1 else GraphDataset(root=data_folder)
-    collate = custom_collate_fn if seq_length > 1 else None
-    train_loader, val_loader, test_loader = create_data_loaders(dataset, train_cfg['batch_size'], collate)
+    train_loader, val_loader, test_loader = create_data_loaders(dataset, train_cfg['batch_size'], seq_length)
     graph_model = FlowPIGNN(**model_cfg).to(device) if train_cfg['use_graph'] else FCDeConvNet(232, 650, 656, 500).to(device)
 
     if seq_length > 1:
@@ -322,7 +306,7 @@ if __name__ == "__main__":
     # args = parser.parse_args()
     # run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size)
 
-    run(1, False, 30, True, 1, 64)
+    run(1, False, 30, True, 50, 64)
     run(1, False, 90, True, 1, 64)
     run(1, False, 360, True, 1, 64)
     run(1, False, 360, False, 1, 64)
