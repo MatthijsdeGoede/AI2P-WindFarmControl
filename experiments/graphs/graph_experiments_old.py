@@ -6,7 +6,7 @@ import torch.nn as nn
 from adamp import AdamP
 from torch.optim import Adam
 from box import Box
-from torch_geometric.data import Dataset
+from torch_geometric.data import Data, Dataset
 from torch_geometric.loader import DataLoader
 from torch.utils.data import random_split
 from architecture.pignn.pignn import FlowPIGNN
@@ -19,9 +19,9 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class GraphDataset(Dataset):
-    def __init__(self, root, data_range, transform=None, pre_transform=None):
+    def __init__(self, root, transform=None, pre_transform=None):
         super(GraphDataset, self).__init__(root, transform, pre_transform)
-        self.data_range = data_range
+        self.data_range = range(30005, 42000 + 1, 5)
         self.root = root
         self.graph_paths = self.load_graph_paths()
 
@@ -38,18 +38,38 @@ class GraphDataset(Dataset):
         return graph_data
 
 
-def create_data_loaders(data_folder, batch_size):
-    dataset = GraphDataset(root=data_folder, data_range=range(30005, 42000 + 1, 5))
-    total_size = len(dataset)
-    train_size = int(0.7 * total_size)
-    val_size = int(0.1 * total_size)
-    test_size = total_size - train_size - val_size
+class GraphTemporalDataset(Dataset):
+    def __init__(self, root, seq_length, transform=None, pre_transform=None):
+        super(GraphTemporalDataset, self).__init__(root, transform, pre_transform)
+        self.root = root
+        self.seq_length = seq_length
+
+    def _get_sequence(self, start):
+        return [torch.load(f"{self.root}/graph_{30005 + (start + i) * 5}.pt") for i in range(self.seq_length)]
+
+    def len(self):
+        return len([name for name in os.listdir(self.root)]) - 2 * self.seq_length
+
+    def get(self, idx):
+        return self._get_sequence(idx), self._get_sequence(idx + self.seq_length)
+
+
+def custom_collate_fn(batch):
+    # Each batch consists of a list of sequences (each a list of graphs)
+    return [Data.from_data_list(seq) for seq in batch]
+
+
+def create_data_loaders(data_folder, batch_size, seq_length):
+    dataset = GraphTemporalDataset(root=data_folder, seq_length=seq_length) if seq_length > 1 else GraphDataset(root=data_folder)
+    train_size = int(0.7 * len(dataset))
+    val_size = int(0.1 * len(dataset))
+    test_size = len(dataset) - train_size - val_size
+    collate = custom_collate_fn if seq_length > 1 else None
 
     train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
-
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, collate_fn=collate, shuffle=True, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, collate_fn=collate, shuffle=True, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, collate_fn=collate, shuffle=True, pin_memory=True)
 
     return train_loader, val_loader, test_loader
 
@@ -135,12 +155,12 @@ def compute_loss(batch, criterion, model):
 
 def create_output_folder(train_config, net_type):
     time = datetime.now().strftime('%Y%m%d%H%M%S')
-    output_folder = f"results/{time}_Case0{train_config.case_nr}_{train_config.wake_steering}_{net_type}"
+    output_folder = f"results/{time}_Case0{train_config.case_nr}_{train_config.wake_steering}_{net_type}__{train_config.seq_length}"
     os.makedirs(output_folder)
     return output_folder
 
 
-def get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True, num_epochs=200):
+def get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True, seq_length=1, num_epochs=200):
     cfg = Box({
         'model': {
             'edge_in_dim': 2,
@@ -170,6 +190,7 @@ def get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True, num
             'max_angle': max_angle,
             'num_epochs': num_epochs,
             'use_graph': use_graph,
+            'seq_length': seq_length,
             'early_stop_after': 5,
             'batch_size': 64,
         }
@@ -177,17 +198,18 @@ def get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True, num
     return cfg
 
 
-def run_experiments():
+def run_experiments(is_temporal):
+    seq_length = 50 if is_temporal else 1
     experiment_cfgs = [
-        get_config(case_nr=1, wake_steering=False, max_angle=30, use_graph=True),
-        get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True),
-        get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=True),
-        get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=False),
+        get_config(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length=seq_length),
+        get_config(case_nr=1, wake_steering=False, max_angle=90, use_graph=True, seq_length=seq_length),
+        get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=True, seq_length=seq_length),
+        get_config(case_nr=1, wake_steering=False, max_angle=360, use_graph=False, seq_length=seq_length),
 
-        get_config(case_nr=1, wake_steering=True, max_angle=30, use_graph=True),
-        get_config(case_nr=1, wake_steering=True, max_angle=90, use_graph=True),
-        get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=True),
-        get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=False),
+        get_config(case_nr=1, wake_steering=True, max_angle=30, use_graph=True, seq_length=seq_length),
+        get_config(case_nr=1, wake_steering=True, max_angle=90, use_graph=True, seq_length=seq_length),
+        get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=True, seq_length=seq_length),
+        get_config(case_nr=1, wake_steering=True, max_angle=360, use_graph=False, seq_length=seq_length),
 
         # get_config(case_nr=2, wake_steering=False, max_angle=30, use_graph=True),
         # get_config(case_nr=2, wake_steering=False, max_angle=90, use_graph=True),
@@ -201,12 +223,18 @@ def run_experiments():
         data_folder = f"../../data/Case_0{cfg.train.case_nr}/graphs/{post_fix}/{cfg.train.max_angle}"
         output_folder = create_output_folder(cfg.train, net_type)
 
-        train_loader, val_loader, test_loader = create_data_loaders(data_folder, cfg.train.batch_size)
-        model = FlowPIGNN(**cfg.model).to(device) if cfg.train.use_graph else FCDeConvNet(232, 650, 656, 500).to(device)
+        train_loader, val_loader, test_loader = create_data_loaders(data_folder, cfg.train.batch_size, cfg.train.seq_length)
+        graph_model = FlowPIGNN(**cfg.model).to(device) if cfg.train.use_graph else FCDeConvNet(232, 650, 656, 500).to(device)
 
         print(f"Running experiment {i+1}/{len(experiment_cfgs)}")
-        train(model, cfg.train, train_loader, val_loader, output_folder)
+        if seq_length > 1:
+            print("tada")
+        # temporal_model = WindspeedLSTM(seq_length, 128).to(device)
+        # train_temporal(graph_model, temporal_model, config, train_loader, val_loader, output_folder)
+        else:
+            train(graph_model, cfg.train, train_loader, val_loader, output_folder)
 
 
 if __name__ == "__main__":
-    run_experiments()
+    temporal = False
+    run_experiments(temporal)
