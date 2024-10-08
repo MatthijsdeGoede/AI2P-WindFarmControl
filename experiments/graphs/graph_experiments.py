@@ -59,47 +59,32 @@ def custom_collate_fn(batch):
     return [Data.from_data_list(seq) for seq in batch]
 
 
-def create_data_loaders(dataset, batch_size, custom_collate=None, num_workers=4):
+def create_data_loaders(dataset, batch_size, seq_length):
     total_size = len(dataset)
     train_size = int(0.7 * total_size)
     val_size = int(0.1 * total_size)
     test_size = total_size - train_size - val_size
-
+    collate = custom_collate_fn if seq_length > 1 else None
     train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=num_workers)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=num_workers)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate, num_workers=num_workers)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate, pin_memory=True)
 
     return train_loader, val_loader, test_loader
 
 
 def compute_loss(batch, criterion, model):
+    # Logic to handle different model types
+    x, pos, edge_attr, glob, target = batch.x, batch.pos, batch.edge_attr.float(), batch.global_feats.float(), batch.y
+    # Concatenate features for non-GNN models
     if isinstance(model, FCDeConvNet):
-        # If the model is not a Graph Neural Network, just concatenate everything
-        x = batch.x.to(device)
-        pos = batch.pos.to(device)
-        edge_attr = batch.edge_attr.to(device)
-        glob = batch.global_feats.to(device)
-        batch_size = glob.size(0)
-
-        x_cat = torch.cat((
-            x.reshape(batch_size, -1),
-            pos.reshape(batch_size, -1),
-            edge_attr.reshape(batch_size, -1),
-            glob.reshape(batch_size, -1)
-        ), dim=-1)
-
-        pred = model(x_cat).float()
-        target = batch.y.to(device).reshape(-1, pred.size(1))
-        loss = criterion(pred, target)
+        x_cat = torch.cat([x.flatten(), pos.flatten(), edge_attr.flatten(), glob.flatten()], dim=-1)
+        pred = model(x_cat)
     else:
-        nf = torch.cat((batch.x.to(device), batch.pos.to(device)), dim=-1)
-        ef = batch.edge_attr.to(device)
-        gf = batch.global_feats.to(device)
-        pred = model(batch, nf, ef, gf).float()
-        target = batch.y.to(device).reshape(-1, pred.size(1))
-        loss = criterion(pred, target)
+        nf = torch.cat((x, pos), dim=-1).float()
+        pred = model(batch, nf, edge_attr, glob)
+    loss = criterion(pred, target.reshape((pred.size(0), -1)))
     return loss
 
 
@@ -165,15 +150,15 @@ def process_temporal_batch(batch, graph_model, temporal_model, criterion):
     for i, seq in enumerate(batch[0]):
         # Process graphs in parallel at each timestep for the entire batch
         seq = seq.to(device)
-        nf = torch.cat((seq.x.to(device), seq.pos.to(device)), dim=-1)
-        ef = seq.edge_attr.to(device)
-        gf = seq.global_feats.to(device)
+        nf = torch.cat((seq.x.to(device), seq.pos.to(device)), dim=-1).float()
+        ef = seq.edge_attr.to(device).float()
+        gf = seq.global_feats.to(device).float()
         graph_output = graph_model(seq, nf, ef, gf).reshape(-1, 128, 128)
         generated_img.append(graph_output)
         target_img.append(batch[1][i].y.to(device).reshape(-1, 128, 128))
 
     temporal_img = torch.stack(generated_img, dim=1)
-    output = temporal_model(temporal_img).float()
+    output = temporal_model(temporal_img)
     target = torch.stack(target_img, dim=1)
     return criterion(output, target)
 
@@ -206,7 +191,7 @@ def eval_temporal_epoch(val_loader, graph_model, temporal_model, criterion):
 
 def train_temporal(graph_model, temporal_model, train_params, train_loader, val_loader, output_folder):
     optimizer = Adam(list(graph_model.parameters()) + list(temporal_model.parameters()), lr=0.01)
-    criterion = nn.MSELoss()
+    criterion = nn.MSELoss().to(device)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50)
 
     num_epochs = train_params['num_epochs']
@@ -214,26 +199,28 @@ def train_temporal(graph_model, temporal_model, train_params, train_loader, val_
     epochs_no_improve = 0
 
     for epoch in range(1, num_epochs + 1):
-        # Perform a training and validation epoch
-        train_loss = train_temporal_epoch(train_loader, graph_model, temporal_model, criterion, optimizer, scheduler)
-        val_loss = eval_temporal_epoch(val_loader, graph_model, temporal_model, criterion)
-        learning_rate = optimizer.param_groups[0]['lr']
-        print(f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {train_loss}, validation loss: {val_loss}")
+        with torch.autograd.profiler.profile(use_cuda=True) as prof:
+            # Perform a training and validation epoch
+            train_loss = train_temporal_epoch(train_loader, graph_model, temporal_model, criterion, optimizer, scheduler)
+            val_loss = eval_temporal_epoch(val_loader, graph_model, temporal_model, criterion)
+            learning_rate = optimizer.param_groups[0]['lr']
+            print(f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {train_loss}, validation loss: {val_loss}")
 
-        # Save model pointers
-        torch.save(graph_model.state_dict(), f"{output_folder}/pignn_{epoch}.pt")
-        torch.save(temporal_model.state_dict(), f"{output_folder}/unet_lstm_{epoch}.pt")
+            # Save model pointers
+            torch.save(graph_model.state_dict(), f"{output_folder}/pignn_{epoch}.pt")
+            torch.save(temporal_model.state_dict(), f"{output_folder}/unet_lstm_{epoch}.pt")
 
-        # Check early stopping criterion
-        if val_loss < best_loss:
-            best_loss = val_loss
-            epochs_no_improve = 0
-        else:
-            epochs_no_improve += 1
+            # Check early stopping criterion
+            if val_loss < best_loss:
+                best_loss = val_loss
+                epochs_no_improve = 0
+            else:
+                epochs_no_improve += 1
 
-        if epochs_no_improve >= train_params['early_stop_after']:
-            print(f'Early stopping at epoch {epoch}')
-            break
+            if epochs_no_improve >= train_params['early_stop_after']:
+                print(f'Early stopping at epoch {epoch}')
+                break
+        print(prof.key_averages().table(sort_by="cuda_time_total"))
 
 
 def create_output_folder(train_config, net_type):
@@ -298,8 +285,7 @@ def run(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size):
     save_config(output_folder, train_cfg)
 
     dataset = GraphTemporalDataset(root=data_folder, seq_length=seq_length) if seq_length > 1 else GraphDataset(root=data_folder)
-    collate = custom_collate_fn if seq_length > 1 else None
-    train_loader, val_loader, test_loader = create_data_loaders(dataset, train_cfg['batch_size'], collate)
+    train_loader, val_loader, test_loader = create_data_loaders(dataset, train_cfg['batch_size'], seq_length)
     graph_model = FlowPIGNN(**model_cfg).to(device) if train_cfg['use_graph'] else FCDeConvNet(232, 650, 656, 500).to(device)
 
     if seq_length > 1:
@@ -321,11 +307,11 @@ if __name__ == "__main__":
     # run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size)
 
     run(1, False, 30, True, 50, 64)
-    run(1, False, 90, True, 50, 64)
-    run(1, False, 360, True, 50, 64)
-    run(1, False, 360, False, 50, 64)
+    run(1, False, 90, True, 1, 64)
+    run(1, False, 360, True, 1, 64)
+    run(1, False, 360, False, 1, 64)
 
-    run(1, True, 30, True, 50, 64)
-    run(1, True, 90, True, 50, 64)
-    run(1, True, 360, True, 50, 64)
-    run(1, True, 360, False, 50, 64)
+    run(1, True, 30, True, 1, 64)
+    run(1, True, 90, True, 1, 64)
+    run(1, True, 360, True, 1, 64)
+    run(1, True, 360, False, 1, 64)
