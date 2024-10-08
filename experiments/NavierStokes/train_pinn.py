@@ -19,14 +19,16 @@ generator = torch.Generator()
 generator.manual_seed(42)
 
 
-def load_data(data_type: str, only_grid: bool):
+def load_data(data_type: str, only_grid: bool, use_sampling: bool, samples_per_grid: int):
     dataset = GridDataset(dir="data/Case_01/measurements_flow/postProcessing_BL/winSpeedMapVector/",
                         turbine_csv="data/Case_01/measurements_turbines/30000_BL/rot_yaw_combined.csv",
                         wind_csv="data/Case_01/winDir_processed.csv", 
                         data_type=data_type, 
                         wake_dir="data/Case_01/measurements_flow/postProcessing_LuT2deg_internal/winSpeedMapVector/",
                         wake_turbine_csv="data/Case_01/measurements_turbines/30000_LuT2deg_internal/rot_yaw_combined.csv",
-                        only_grid_values=only_grid)
+                        only_grid_values=only_grid,
+                        sampling=use_sampling,
+                        samples_per_grid=samples_per_grid)
 
     MIN_TIME, MAX_TIME = dataset[0][0][:, 2][0].item(), dataset[-1][0][:, 2][0].item()
 
@@ -58,14 +60,25 @@ def load_model_optimizer(model, optimizer, model_save_path):
     return max_epoch, checkpoint["train_losses"], checkpoint["val_losses"]
 
 
-def main(physics_coef: int, hidden_size: int, only_grid: bool, data_type: str, model_save_path: str, use_checkpoint: bool, increase_physics: bool, alpha: float):
-    train_loader, val_loader, MIN_TIME, MAX_TIME = load_data(data_type, only_grid)
+def main(physics_coef: int, 
+         hidden_size: int, 
+         tanh: bool, 
+         only_grid: bool, 
+         data_type: str, 
+         model_save_path: str, 
+         use_checkpoint: bool, 
+         increase_physics: bool,
+         use_sampling: bool,
+         sample_size: int
+    ):
+
+    train_loader, val_loader, MIN_TIME, MAX_TIME = load_data(data_type, only_grid, use_sampling, sample_size)
 
     in_features = 3 if only_grid else 35
 
-    model = PINN(in_dimensions=in_features, hidden_size=hidden_size).cuda()
+    model = PINN(in_dimensions=in_features, hidden_size=hidden_size, tanh_activation=tanh).cuda()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    criterion = NSLoss(physics_coef=physics_coef, alpha=alpha)
+    criterion = NSLoss(physics_coef=physics_coef, target_epoch=150, max_value=1000)
 
     train_losses = defaultdict(list)
     val_losses = defaultdict(list)
@@ -147,27 +160,40 @@ if __name__ == "__main__":
 
     parser.add_argument("--physics", type=int, default=10, help="Physics loss multiplier")
     parser.add_argument("--hidden-size", type=int, default=128)
+    parser.add_argument("--tanh", type=bool, default=False, action=argparse.BooleanOptionalAction)
     parser.add_argument("--only-grid", type=bool, action=argparse.BooleanOptionalAction, default=False)
     #possible options are: wake, no-wake, both
     parser.add_argument("--data-type", type=str, default="both")
     parser.add_argument("--use-checkpoint", type=bool, default=False, action=argparse.BooleanOptionalAction)
     #Allowing this option overrides --physics argument
     parser.add_argument("--increase-physics", type=bool, default=False, action=argparse.BooleanOptionalAction)
-    parser.add_argument("--alpha", type=float, default=1.0537)
     parser.add_argument("--save-path", type=str, default=None)
+    parser.add_argument("--sample", type=bool, default=False, action=argparse.BooleanOptionalAction)
+    parser.add_argument("--sample-size", type=int, default=256)
 
     args = parser.parse_args()
 
     physics = args.physics
-    model_save_path = f"models/SiLU{args.hidden_size}-p{args.physics}-{args.data_type}"
+    model_type = "Tanh" if args.tanh else "SiLU"
+    model_save_path = f"models/{model_type}{args.hidden_size}-p{args.physics}-{f's{args.sample_size}' if args.sample else 'f'}-{args.data_type}"
 
     if (args.increase_physics):
         physics = 1
-        model_save_path = f"models/SiLU{args.hidden_size}-pVar-{args.alpha}-{args.data_type}"
+        model_save_path = f"models/{model_type}{args.hidden_size}-pVar-{f's{args.sample_size}' if args.sample else 'f'}-{args.data_type}"
 
     if (args.save_path):
         model_save_path = args.save_path
 
     os.makedirs(model_save_path, exist_ok=True)
 
-    main(physics, args.hidden_size, args.only_grid, args.data_type, model_save_path, args.use_checkpoint, args.increase_physics, args.alpha)
+    main(physics, 
+        args.hidden_size, 
+        args.tanh, 
+        args.only_grid, 
+        args.data_type, 
+        model_save_path, 
+        args.use_checkpoint, 
+        args.increase_physics,
+        args.sample,
+        args.sample_size
+    )
