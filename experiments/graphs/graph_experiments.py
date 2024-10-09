@@ -55,7 +55,7 @@ class GraphTemporalDataset(Dataset):
             return [torch.load(f"{self.root}/graph_{30005 + (start + i) * 5}.pt") for i in range(self.seq_length)]
 
     def len(self):
-        return 200 #len([name for name in os.listdir(self.root)]) - 2 * self.seq_length
+        return len([name for name in os.listdir(self.root)]) - 2 * self.seq_length
 
     def get(self, idx):
         return self._get_sequence(idx), self._get_sequence(idx + self.seq_length)
