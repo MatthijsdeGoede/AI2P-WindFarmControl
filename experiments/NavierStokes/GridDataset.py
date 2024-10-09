@@ -8,21 +8,31 @@ import pandas as pd
 
 
 class GridDataset(Dataset):
-    def __init__(self, dir, turbine_csv, wind_csv, data_type="no-wake", wake_dir=None, wake_turbine_csv=None, only_grid_values=False, sampling=False, samples_per_grid=256):
+    def __init__(self, dir, 
+                turbine_csv, 
+                wind_csv, 
+                data_type="no-wake", 
+                wake_dir=None, 
+                wake_turbine_csv=None, 
+                only_grid_values=False, 
+                sampling=False, 
+                samples_per_grid=128, 
+                top_vorticity=0.85):
+        
         super().__init__()
 
         self.datasets = []
         self.data_type = data_type
 
         if (self.data_type == "no-wake"):
-            self.datasets.append(CaseDataset(dir, turbine_csv, wind_csv, only_grid_values, sampling, samples_per_grid))
+            self.datasets.append(CaseDataset(dir, turbine_csv, wind_csv, only_grid_values, sampling, samples_per_grid, top_vorticity))
 
         elif (self.data_type == "wake"):
-            self.datasets.append(CaseDataset(wake_dir, wake_turbine_csv, wind_csv, only_grid_values, sampling, samples_per_grid))
+            self.datasets.append(CaseDataset(wake_dir, wake_turbine_csv, wind_csv, only_grid_values, sampling, samples_per_grid, top_vorticity))
 
         elif (self.data_type == "both"):
-            self.datasets.append(CaseDataset(dir, turbine_csv, wind_csv, only_grid_values, sampling, samples_per_grid))
-            self.datasets.append(CaseDataset(wake_dir, wake_turbine_csv, wind_csv, only_grid_values, sampling, samples_per_grid))
+            self.datasets.append(CaseDataset(dir, turbine_csv, wind_csv, only_grid_values, sampling, samples_per_grid, top_vorticity))
+            self.datasets.append(CaseDataset(wake_dir, wake_turbine_csv, wind_csv, only_grid_values, sampling, samples_per_grid, top_vorticity))
             
         else:
             raise ValueError(f"data_type must be no-wake, wake, or both. was given: {self.data_type}")
@@ -50,7 +60,7 @@ class GridDataset(Dataset):
     
 
 class CaseDataset(Dataset):
-    def __init__(self, dir, turbine_csv, wind_csv, only_grid_values=False, sampling=False, samples_per_grid=256):
+    def __init__(self, dir, turbine_csv, wind_csv, only_grid_values=False, sampling=False, samples_per_grid=256, top_vorticity=0.8):
         super().__init__()
 
         self.dir = dir
@@ -64,8 +74,8 @@ class CaseDataset(Dataset):
         self.only_grid_values = only_grid_values
         
         flat_index = torch.arange(90000)
-        x_coords = flat_index // 300
-        y_coords = flat_index % 300
+        x_coords = flat_index % 300
+        y_coords = flat_index // 300
         self.coords = torch.stack([x_coords, y_coords]).T
 
         self.df_turbines = pd.read_csv(turbine_csv, index_col=0)
@@ -73,6 +83,7 @@ class CaseDataset(Dataset):
 
         self.sampling = sampling
         self.samples_per_grid = samples_per_grid
+        self.top_vorticity = top_vorticity
 
     def __len__(self):
         return len(self.files) 
@@ -107,22 +118,24 @@ class CaseDataset(Dataset):
         y_vorticity = -dwdx
         z_vorticity = dvdx - dudy
 
-        vorticity_intensity = np.sqrt(x_vorticity ** 2 + y_vorticity **2 + z_vorticity ** 2)
+        vorticity_intensity = torch.sqrt(x_vorticity ** 2 + y_vorticity **2 + z_vorticity ** 2)
         return vorticity_intensity
 
 
-    def _get_sampled_indices(self, vorticity):
+    def _get_sampled_indices(self, vorticity: torch.Tensor):
         """
         The model struggles the most with high vorticity areas. We assign a
         higher selection ratio to the top 20% vorticity areas for sampling.
         As a result with a sample size of 256, 128 of them should be from the
         top %20 vorticity and 128 of them should be from the rest of grid.
         """
-        vorticity = vorticity.flatten()
-        threshold = torch.quantile(vorticity, 0.8)
-        selection_odds = np.array(torch.where(vorticity > threshold, 1, 4))
+        selection_likelihood = self.top_vorticity / (1 - self.top_vorticity) 
 
-        indices = np.random.choice(range(vorticity.size), 
+        vorticity = vorticity.flatten()
+        threshold = torch.quantile(vorticity, self.top_vorticity)
+        selection_odds = np.array(torch.where(vorticity < threshold, 1, selection_likelihood))
+
+        indices = np.random.choice(range(torch.numel(vorticity)), 
                                    size=self.samples_per_grid, 
                                    replace=False, 
                                    p=selection_odds/selection_odds.sum())
