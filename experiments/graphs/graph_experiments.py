@@ -307,22 +307,13 @@ def run(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, di
 
 
 if __name__ == "__main__":
-    # parser = argparse.ArgumentParser(description='Run experiments with different configurations.')
-    # parser.add_argument('--case_nr', type=int, default=1, help='Case number to use for the experiment (default: 1)')
-    # parser.add_argument('--wake_steering', action='store_true', help='Enable wake steering (default: False)')
-    # parser.add_argument('--max_angle', type=int, default=90, help='Maximum angle for the experiment (default: 90)')
-    # parser.add_argument('--use_graph', action='store_true', help='Use graph representation (default: False)')
-    # parser.add_argument('--seq_length', type=int, default=1, help='Sequence length for the experiment (default: 1)')
-    # parser.add_argument('--batch_size', type=int, default=4, help='Batch size for the experiment (default: 4)')
-    # args = parser.parse_args()
-    # run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size)
-
-    run(1, False, 30, True, 50, 4, True)
-    # run(1, False, 90, True, 1, 64)
-    # run(1, False, 360, True, 1, 64)
-    # run(1, False, 360, False, 1, 64)
-    #
-    # run(1, True, 30, True, 1, 64)
-    # run(1, True, 90, True, 1, 64)
-    # run(1, True, 360, True, 1, 64)
-    # run(1, True, 360, False, 1, 64)
+    parser = argparse.ArgumentParser(description='Run experiments with different configurations.')
+    parser.add_argument('--case_nr', type=int, default=1, help='Case number to use for the experiment (default: 1)')
+    parser.add_argument('--wake_steering', action='store_true', help='Enable wake steering (default: False)')
+    parser.add_argument('--max_angle', type=int, default=90, help='Maximum angle for the experiment (default: 90)')
+    parser.add_argument('--use_graph', action='store_true', help='Use graph representation (default: False)')
+    parser.add_argument('--seq_length', type=int, default=1, help='Sequence length for the experiment (default: 1)')
+    parser.add_argument('--batch_size', type=int, default=4, help='Batch size for the experiment (default: 4)')
+    parser.add_argument('--direct_lstm', action='store_true', help='Feed the PIGNN output directly to the LSTM (default: False)')
+    args = parser.parse_args()
+    run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size, args.direct_lstm)
