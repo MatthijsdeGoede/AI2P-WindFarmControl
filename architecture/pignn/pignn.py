@@ -64,8 +64,7 @@ class PowerPIGNN(nn.Module):
 
     def forward(self, data, nf, ef, gf):
         unf, uef, ug = self._forward_graph(data, nf, ef, gf)
-        power_pred = self.reg(unf)
-        return power_pred.clip(min=0.0, max=1.0)
+        return unf.reshape(-1, 1, 10, unf.size(1))
 
 
 class FlowPIGNN(PowerPIGNN):

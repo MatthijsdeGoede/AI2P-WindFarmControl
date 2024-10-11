@@ -35,7 +35,7 @@ def prepare_graph_training_data():
 
     # Get the features for every wind turbine (node features)
     turbine_pos = torch.tensor(read_turbine_positions(layout_file))  # (10x2)
-    wind_speeds = torch.tensor(np.load(f"{flow_data_dir}/windspeed_estimation_case_0{case_nr}_30000_{type}.npy")[0:, ::2][0:, step::step])  # (10x2400)
+    wind_speeds = torch.tensor(np.load(f"{flow_data_dir}/windspeed_at_turbines.npy")[0:, ::2][0:, step::step])  # (10x2400)
     yaw_measurement = torch.tensor(read_measurement(turbine_data_dir, "nacYaw"))  # (10x2400)
     rotation_measurement = torch.tensor(read_measurement(turbine_data_dir, "rotSpeed"))  # (10x2400)
 

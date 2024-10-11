@@ -20,7 +20,7 @@ class WindspeedMapDataset(Dataset):
         scalars = [np.load(f'{self.root_dir}/Windspeed_map_scalars_{30005 + (start + i) * 5}.npy') for i in range(self.sequence_length)]
         if transform:
             scalars = transform(scalars)
-        scalars = torch.tensor(np.array(scalars))
+        scalars = torch.tensor(np.array(scalars), dtype=torch.double)
         return scalars
 
     def __getitem__(self, idx):

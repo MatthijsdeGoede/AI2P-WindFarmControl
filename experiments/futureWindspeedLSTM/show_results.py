@@ -12,6 +12,7 @@ from utils.preprocessing import resize_windspeed
 from utils.visualization import plot_prediction_vs_real, animate_prediction_vs_real
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 def create_transform(scale):
     def resize_scalars(windspeed_scalars):
@@ -23,8 +24,8 @@ def make_model_predictions(model, inputs, length):
     if length < 0:
         return model(inputs)
     outputs = model(inputs)
-    next_outputs = make_model_predictions(model, outputs, length - outputs.shape[0])
-    return torch.cat((outputs, next_outputs), dim=0)
+    next_outputs = make_model_predictions(model, outputs, length - outputs.shape[1])
+    return torch.cat((outputs.squeeze(), next_outputs.squeeze()), dim=0)
 
 
 def get_model_targets(dataset, index, length):
@@ -54,31 +55,34 @@ def plot():
                                                                 transform=create_transform(scale))
     model = WindspeedLSTM(sequence_length, 300).to(device)
 
-    max_epoch = max(os.listdir(f'results/{latest}/model'))
-    model.load_state_dict(torch.load(f"results/{latest}/model/{max_epoch}"))
+    max_epoch = max([int(file.split(".")[0]) for file in os.listdir(f'results/{latest}/model')])
+    model.load_state_dict(torch.load(f"results/{latest}/model/{max_epoch}.pt"))
     model.eval()
 
-    print(f"results/{latest}/{max_epoch}")
+    print(f"results/{latest}/{max_epoch}.pt")
 
-    dataset = WindspeedMapDataset(root_dir, sequence_length)
+    transform = create_transform(scale)
+
+    dataset = WindspeedMapDataset(root_dir, sequence_length,
+                                  transform=transform,
+                                  target_transform=transform)
 
 
     with torch.no_grad():
-        # start = np.random.randint(0, len(dataset))
-        # inputs, _ = dataset[start]
-        # animation_length = 50
-        # outputs = make_model_predictions(model, inputs[None, :, :, :], animation_length).squeeze()
-        # targets = get_model_targets(dataset, start, animation_length).squeeze()
-        #
-        # def animate_callback(i):
-        #     return outputs[i], targets[i]
-        #
-        # animate_prediction_vs_real(animate_callback, animation_length, f"results/{latest}")
+        start = np.random.randint(0, len(dataset))
+        inputs, _ = dataset[start]
+        animation_length = 40
+        outputs = make_model_predictions(model, inputs[None, :, :, :], animation_length).squeeze()
+        targets = get_model_targets(dataset, start, animation_length).squeeze()
 
-        for inputs, targets in test_loader:
-            inputs, targets = inputs.to(device), targets.to(device)
-            output = model(inputs)
-            plot_prediction_vs_real(output[0, 0, :, :].cpu(), targets[0, 0, :, :].cpu(), case)
+        def animate_callback(i):
+            return outputs[i], targets[i]
+
+        animate_prediction_vs_real(animate_callback, animation_length, f"results/{latest}/animations/case-{case}-max_epoch-{max_epoch}")
+        # for inputs, targets in test_loader:
+        #     inputs, targets = inputs.to(device), targets.to(device)
+        #     output = model(inputs)
+        #     plot_prediction_vs_real(output[0, 0, :, :].cpu(), targets[0, 0, :, :].cpu(), case)
 
 if __name__ == '__main__':
     plot()
