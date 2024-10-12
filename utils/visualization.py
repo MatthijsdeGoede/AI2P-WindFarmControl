@@ -78,7 +78,7 @@ def add_blades(ax, windmill_blades):
     for blade in windmill_blades:
         start = blade[0]
         end = blade[-1]
-        ax.add_line(Line2D([start[0], end[0]], [start[1], end[1]], color='blue', lw=3))
+        ax.add_line(Line2D([start[0], end[0]], [start[1], end[1]], color='red', lw=3))
 
 def add_quiver(ax, wind_vec):
     ax.quiver(150, 150, wind_vec[0], wind_vec[1],
@@ -102,10 +102,11 @@ def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file, windmill_blades=N
     fig, ax = plt.subplots()
 
     add_imshow(fig, ax, umean_abs)
-    add_windmills(ax, layout_file)
     add_quiver(ax, wind_vec)
     if windmill_blades:
         add_blades(ax, windmill_blades)
+    else:
+        add_windmills(ax, layout_file)
     plt.show()
 
 

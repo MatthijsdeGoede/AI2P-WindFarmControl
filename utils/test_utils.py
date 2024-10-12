@@ -1,7 +1,7 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-from utils.extract_windspeed import extract_wind_speed
+from utils.extract_windspeed import WindspeedExtractor
 from utils.preprocessing import (read_wind_angles, read_turbine_positions, get_wind_vec_at_time,
                                  create_turbine_nx_graph,
                                  read_wind_speed_scalars, resize_windspeed)
@@ -72,14 +72,15 @@ def test_extract_windspeed():
     wind_angles = read_wind_angles(f"../data/Case_0{case}/HKN_{turbines}_dir.csv")
     wind_vec = get_wind_vec_at_time(wind_angles, timestep)
     wind_angle = wind_angles[wind_angles[:, 0] < timestep][-1, 1]
-    yaw_angles = np.ones(10) * 0
+    yaw_angles = np.arange(start=-45, stop=45, step=9)
 
     blade_pixels = []
 
-    extract_wind_speed(umean_abs, turbine_pos, wind_angle, yaw_angles, blade_pixels)
-    extract_wind_speed(scaled_umean, turbine_pos, wind_angle, yaw_angles)
+    extractor = WindspeedExtractor(turbine_pos, umean_abs)
 
-    blade_pixels = [blade_pixel for blade_pixel in blade_pixels]
+    extractor(umean_abs, wind_angle, yaw_angles)
+    extractor(umean_abs, wind_angle, yaw_angles, blade_pixels)
+
     plot_mean_absolute_speed(scaled_umean, 100 * wind_vec, layout_file, blade_pixels)
 
 if __name__ == "__main__":
