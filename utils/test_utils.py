@@ -1,5 +1,7 @@
+import numpy as np
 from matplotlib import pyplot as plt
 
+from utils.extract_windspeed import extract_wind_speed
 from utils.preprocessing import (read_wind_angles, read_turbine_positions, get_wind_vec_at_time,
                                  create_turbine_nx_graph,
                                  read_wind_speed_scalars, resize_windspeed)
@@ -52,8 +54,33 @@ def test_resize():
 
     umean_abs = read_wind_speed_scalars("postProcessing_BL", 30000 + timestep, f"Case_0{case}")
     scaled_umean = resize_windspeed(umean_abs, (128, 128))
+
     plot_mean_absolute_speed(scaled_umean, 100 * wind_vec, layout_file)
 
+
+def test_extract_windspeed():
+    case = 1
+    timestep = 430
+    turbines = "12_to_15" if case == 1 else "06_to_09" if case == 2 else "00_to_03"
+
+    layout_file = f"../data/Case_0{case}/HKN_{turbines}_layout_balanced.csv"
+    turbine_pos = read_turbine_positions(layout_file)
+
+    umean_abs = read_wind_speed_scalars("postProcessing_BL", 30000 + timestep, f"Case_0{case}")
+    scaled_umean = resize_windspeed(umean_abs, (150, 150))
+
+    wind_angles = read_wind_angles(f"../data/Case_0{case}/HKN_{turbines}_dir.csv")
+    wind_vec = get_wind_vec_at_time(wind_angles, timestep)
+    wind_angle = wind_angles[wind_angles[:, 0] < timestep][-1, 1]
+    yaw_angles = np.ones(10) * 0
+
+    blade_pixels = []
+
+    extract_wind_speed(umean_abs, turbine_pos, wind_angle, yaw_angles, blade_pixels)
+    extract_wind_speed(scaled_umean, turbine_pos, wind_angle, yaw_angles)
+
+    blade_pixels = [blade_pixel for blade_pixel in blade_pixels]
+    plot_mean_absolute_speed(scaled_umean, 100 * wind_vec, layout_file, blade_pixels)
 
 if __name__ == "__main__":
     test_graph_creation_plotting()

@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt, animation
 from matplotlib.patches import Circle
+from matplotlib.lines import Line2D
 
 from utils.preprocessing import read_wind_speed_scalars
 
@@ -73,6 +74,11 @@ def add_windmills(ax, layout_file):
         ax.add_patch(circ)
         ax.text(x, y, f'{i}', ha='center', va='center')
 
+def add_blades(ax, windmill_blades):
+    for blade in windmill_blades:
+        start = blade[0]
+        end = blade[-1]
+        ax.add_line(Line2D([start[0], end[0]], [start[1], end[1]], color='blue', lw=3))
 
 def add_quiver(ax, wind_vec):
     ax.quiver(150, 150, wind_vec[0], wind_vec[1],
@@ -85,7 +91,7 @@ def add_imshow(fig, ax, umean_abs, color_bar=False):
     ax.set_ylabel('Y-axis')
     return axesImage
 
-def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file):
+def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file, windmill_blades=None):
     """"
     Plots the mean absolute wind speed over the given grid
     inputs:
@@ -98,7 +104,8 @@ def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file):
     add_imshow(fig, ax, umean_abs)
     add_windmills(ax, layout_file)
     add_quiver(ax, wind_vec)
-
+    if windmill_blades:
+        add_blades(ax, windmill_blades)
     plt.show()
 
 
