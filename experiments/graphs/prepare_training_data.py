@@ -9,9 +9,10 @@ from torch_geometric.data import Data
 
 from skimage.transform import resize
 
+
 def prepare_graph_training_data():
     case_nr = 1
-    wake_steering = False
+    wake_steering = True
     type = "LuT2deg_internal" if wake_steering else "BL"
     start_ts = 30000
     min_ts = 30005
@@ -44,7 +45,9 @@ def prepare_graph_training_data():
         wind_vec = angle_to_vec(wind_angles[i])
         edge_index, edge_attr = create_turbine_graph_tensors(turbine_pos, wind_vec, max_angle=max_angle)
         # assert edge_index.size(1) == 90
-        node_feats = torch.stack((wind_speeds[:, i], yaw_measurement[:, i], rotation_measurement[:, i]), dim=0).T
+        # node_feats = torch.stack((wind_speeds[:, i], yaw_measurement[:, i], rotation_measurement[:, i]), dim=0).T
+        node_feats = yaw_measurement[:, i].reshape(-1, 1)
+
         target = torch.tensor(resize(np.load(f"{flow_data_dir}/windspeedMapScalars/Windspeed_map_scalars_{timestep}.npy"), (128, 128))).flatten()
         graph_data = Data(x=node_feats.float(), edge_index=edge_index, edge_attr=edge_attr.float(), y=target.float(), pos=turbine_pos)
         graph_data.global_feats = torch.tensor(wind_vec).reshape(-1, 2)

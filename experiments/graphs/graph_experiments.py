@@ -86,7 +86,7 @@ def compute_loss(batch, criterion, model):
     x, pos, edge_attr, glob, target = batch.x, batch.pos, batch.edge_attr.float(), batch.global_feats.float(), batch.y
     # Concatenate features for non-GNN models
     if isinstance(model, FCDeConvNet):
-        x_cat = torch.cat([x.flatten(), pos.flatten(), edge_attr.flatten(), glob.flatten()], dim=-1)
+        x_cat = torch.cat([x.flatten(), pos.flatten(), edge_attr.flatten(), glob.flatten()], dim=-1).float()
         pred = model(x_cat)
     else:
         nf = torch.cat((x, pos), dim=-1).float()
@@ -143,6 +143,7 @@ def train(model, train_params, train_loader, val_loader, output_folder):
         if val_loss < best_loss:
             best_loss = val_loss
             epochs_no_improve = 0
+            torch.save(model.state_dict(), f"{output_folder}/pignn_best.pt")
         else:
             epochs_no_improve += 1
 
@@ -220,6 +221,8 @@ def train_temporal(graph_model, temporal_model, train_params, train_loader, val_
         if val_loss < best_loss:
             best_loss = val_loss
             epochs_no_improve = 0
+            torch.save(graph_model.state_dict(), f"{output_folder}/pignn_best.pt")
+            torch.save(temporal_model.state_dict(), f"{output_folder}/unet_lstm_best.pt")
         else:
             epochs_no_improve += 1
 
@@ -244,7 +247,7 @@ def save_config(output_folder, config):
 def get_pignn_config():
     return {
         'edge_in_dim': 2,
-        'node_in_dim': 5,
+        'node_in_dim': 3,
         'global_in_dim': 2,
         'n_pign_layers': 3,
         'edge_hidden_dim': 50,
@@ -266,7 +269,7 @@ def get_pignn_config():
     }
 
 
-def get_config(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, direct_lstm=False, num_epochs=100, early_stop_after=5):
+def get_config(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, direct_lstm=False, num_epochs=200, early_stop_after=5):
     return get_pignn_config(), {
         'case_nr': case_nr,
         'wake_steering': wake_steering,
@@ -307,13 +310,23 @@ def run(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, di
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Run experiments with different configurations.')
-    parser.add_argument('--case_nr', type=int, default=1, help='Case number to use for the experiment (default: 1)')
-    parser.add_argument('--wake_steering', action='store_true', help='Enable wake steering (default: False)')
-    parser.add_argument('--max_angle', type=int, default=90, help='Maximum angle for the experiment (default: 90)')
-    parser.add_argument('--use_graph', action='store_true', help='Use graph representation (default: False)')
-    parser.add_argument('--seq_length', type=int, default=1, help='Sequence length for the experiment (default: 1)')
-    parser.add_argument('--batch_size', type=int, default=4, help='Batch size for the experiment (default: 4)')
-    parser.add_argument('--direct_lstm', action='store_true', help='Feed the PIGNN output directly to the LSTM (default: False)')
-    args = parser.parse_args()
-    run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size, args.direct_lstm)
+    # parser = argparse.ArgumentParser(description='Run experiments with different configurations.')
+    # parser.add_argument('--case_nr', type=int, default=1, help='Case number to use for the experiment (default: 1)')
+    # parser.add_argument('--wake_steering', action='store_true', help='Enable wake steering (default: False)')
+    # parser.add_argument('--max_angle', type=int, default=90, help='Maximum angle for the experiment (default: 90)')
+    # parser.add_argument('--use_graph', action='store_true', help='Use graph representation (default: False)')
+    # parser.add_argument('--seq_length', type=int, default=1, help='Sequence length for the experiment (default: 1)')
+    # parser.add_argument('--batch_size', type=int, default=4, help='Batch size for the experiment (default: 4)')
+    # parser.add_argument('--direct_lstm', action='store_true', help='Feed the PIGNN output directly to the LSTM (default: False)')
+    # args = parser.parse_args()
+    # run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size, args.direct_lstm)
+
+    # run(1, False, 30, True, 1, 64, False)
+    # run(1, False, 90, True, 1, 64, False)
+    # run(1, False, 360, True, 1, 64, False)
+    # run(1, False, 360, False, 1, 64, False)
+
+    run(1, True, 30, True, 1, 64, False)
+    run(1, True, 90, True, 1, 64, False)
+    run(1, True, 360, True, 1, 64, False)
+    # run(1, True, 360, False, 1, 64, False)
