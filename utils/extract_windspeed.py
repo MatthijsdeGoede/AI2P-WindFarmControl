@@ -1,13 +1,14 @@
 import numpy as np
+import pandas as pd
 
 ROTOR_DIAMETER = 178.3
 
 class WindspeedExtractor:
-    def __init__(self, turbine_locations, sample_windspeed_map):
+    def __init__(self, turbine_locations, map_size):
         self.n_turbines = len(turbine_locations)
 
 
-        scale_factor = sample_windspeed_map.shape[0] / 5000
+        scale_factor = map_size / 5000
         # print(f"One pixel = {round(1/scale_factor, 2)}m")
 
         self.turbine_location_centers = np.array(turbine_locations) * scale_factor
@@ -32,12 +33,12 @@ class WindspeedExtractor:
         return np.squeeze((R @ (p.T-o.T) + o.T).T)
 
 
-    def __call__(self, windspeedmap, wind_vec, yaw_angles, location_pixels=None):
+    def __call__(self, windspeedmap, wind_angle, yaw_angles, location_pixels=None):
 
         wind_speeds_at_turbine = np.empty((self.n_turbines, self.rotor_diameter_pixels))
 
         for i, turbine_location in enumerate(self.turbine_locations):
-            rotated = self.rotate(turbine_location, origin=self.turbine_location_centers[i], degrees=wind_vec + yaw_angles[i]).astype(int)
+            rotated = self.rotate(turbine_location, origin=self.turbine_location_centers[i], degrees=yaw_angles[i]).astype(int)
 
             if location_pixels is not None:
                 location_pixels.append(rotated)
