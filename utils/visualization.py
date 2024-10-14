@@ -81,7 +81,6 @@ def add_blades(ax, windmill_blades):
         ax.add_line(Line2D([start[0], end[0]], [start[1], end[1]], color='red', lw=3))
 
 def add_quiver(ax, wind_vec, center):
-    print(wind_vec)
     ax.quiver(center, center, wind_vec[0], wind_vec[1],
                angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
 
