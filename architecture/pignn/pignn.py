@@ -82,20 +82,20 @@ class FlowPIGNN(PowerPIGNN):
                  residual: bool = True,
                  input_norm: bool = True,
                  pign_mlp_params: dict = None,
-                 reg_mlp_params: dict = None):
+                 reg_mlp_params: dict = None,
+                 actor_model: nn.Module = None):
         super(FlowPIGNN, self).__init__(edge_in_dim, node_in_dim, global_in_dim, edge_hidden_dim, node_hidden_dim,
                                         global_hidden_dim, output_dim, n_pign_layers, residual, input_norm,
                                         pign_mlp_params, reg_mlp_params)
         self.num_nodes = num_nodes
 
-        # regression layer : convert the node embedding to power predictions
-        # self.reg = MLP(num_nodes * node_hidden_dim, output_dim, **reg_mlp_params)
-
-        # deconvolution layers
-        self.deconv = DeConvNet()
+        # Actor model on the node embeddings
+        self.actor_model = actor_model
 
     # Override
     def forward(self, data, nf, ef, gf):
         unf, uef, ug = self._forward_graph(data, nf, ef, gf)
-        flow_pred = self.deconv(unf.reshape(-1, 1, self.num_nodes, unf.size(1)))
-        return flow_pred
+        output = unf.reshape(-1, 1, self.num_nodes, unf.size(1))
+        if self.actor_model is not None:
+            output = self.actor_model(output)
+        return output

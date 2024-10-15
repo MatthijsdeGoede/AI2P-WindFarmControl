@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt, animation
 from matplotlib.patches import Circle
+from matplotlib.lines import Line2D
 
 from utils.preprocessing import read_wind_speed_scalars
 
@@ -63,19 +64,24 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
     anim.save(f'./animations/{case}/{start}/{frames}.gif', writer='pillow', progress_callback=progress_callback)
 
 
-def add_windmills(ax, layout_file):
+def add_windmills(ax, layout_file, image_size=300):
     # Create windmill layout
     df = pd.read_csv(layout_file, sep=",", header=None)
-    scale_factor = 300/5000
+    scale_factor = image_size/5000
 
     for i, (x, y, z) in enumerate(df.values * scale_factor):
-        circ = Circle((x, y), 5, color='red')
+        circ = Circle((x, y), image_size/60, color='red')
         ax.add_patch(circ)
         ax.text(x, y, f'{i}', ha='center', va='center')
 
+def add_blades(ax, windmill_blades):
+    for blade in windmill_blades:
+        start = blade[0]
+        end = blade[-1]
+        ax.add_line(Line2D([start[0], end[0]], [start[1], end[1]], color='red', lw=3))
 
-def add_quiver(ax, wind_vec):
-    ax.quiver(150, 150, wind_vec[0], wind_vec[1],
+def add_quiver(ax, wind_vec, center):
+    ax.quiver(center, center, wind_vec[0], wind_vec[1],
                angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
 
 def add_imshow(fig, ax, umean_abs, color_bar=False):
@@ -85,7 +91,7 @@ def add_imshow(fig, ax, umean_abs, color_bar=False):
     ax.set_ylabel('Y-axis')
     return axesImage
 
-def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file):
+def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file, windmill_blades=None):
     """"
     Plots the mean absolute wind speed over the given grid
     inputs:
@@ -96,9 +102,11 @@ def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file):
     fig, ax = plt.subplots()
 
     add_imshow(fig, ax, umean_abs)
-    add_windmills(ax, layout_file)
-    add_quiver(ax, wind_vec)
-
+    add_quiver(ax, wind_vec, umean_abs.shape[0] / 2)
+    if windmill_blades:
+        add_blades(ax, windmill_blades)
+    else:
+        add_windmills(ax, layout_file, umean_abs.shape[0])
     plt.show()
 
 

@@ -9,7 +9,7 @@ import torch
 from numpy.linalg import norm
 from scipy.interpolate import griddata
 
-# from skimage.transform import resize
+from skimage.transform import resize
 
 # from utils.timing import start_timer, print_timer
 
@@ -148,12 +148,12 @@ def angle_to_vec(wind_angle):
 
 
 def read_wind_angles(file):
-    angles = np.genfromtxt(file, delimiter=",") + np.array([0, 180])
+    angles = np.genfromtxt(file, delimiter=",") * np.array([0, -1]) - np.array([0, 90])
     max_time = np.max(angles, axis=0)[0] + 1
     return np.mod(angles, [max_time, 360])
 
 def get_wind_vec_at_time(wind_angles, timestep):
-    return angle_to_vec(wind_angles[wind_angles[:, 0] < timestep][-1, 1])
+    return angle_to_vec(wind_angles[wind_angles[:, 0] <= timestep][-1, 1])
 
 
 def get_wind_angles_for_range(file, custom_range, start_ts):

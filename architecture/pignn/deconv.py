@@ -2,23 +2,43 @@ from torch import nn, relu
 
 
 class DeConvNet(nn.Module):
-    def __init__(self):
+    def __init__(self, input_channels, layer_channels, output_size=(128, 128)):
         super(DeConvNet, self).__init__()
         # Upsampling layers, each layer multiplies both dims by 2
-        self.deconv = nn.Sequential(
-            nn.ConvTranspose2d(in_channels=1, out_channels=128, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(),
-            nn.ConvTranspose2d(in_channels=128, out_channels=256, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(),
-            nn.ConvTranspose2d(in_channels=256, out_channels=1, kernel_size=4, stride=2, padding=1)
-        )
+        layers = []
+        for i, out_channels in enumerate(layer_channels):
+            in_channels = input_channels if i == 0 else layer_channels[i-1]
+            layers.append(nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1))
+            layers.append(nn.ReLU())
+
+        self.de_conv = nn.Sequential(*layers)
+        self.output_size = output_size
 
     def forward(self, x):
-        output_tensor = self.deconv(x)
-        # Use interpolation to reach the exact desired output size of (300, 300)
-        return nn.functional.interpolate(
-            output_tensor, size=(128, 128), mode='bilinear', align_corners=False).reshape(output_tensor.size(0), -1)
+        # Use interpolation to reach the exact desired output size
+        output_tensor = self.de_conv(x.reshape(-1, 1, 10, 50))
+        return nn.functional.interpolate(output_tensor, size=self.output_size, mode='bilinear', align_corners=False).reshape(-1, 50, 128, 128)
 
+    # def forward(self, x):
+    #     # Initialize a list to store the outputs for each timestep
+    #     outputs = []
+    #     for t in range(x.shape[1]):
+    #         timestep_data = x[:, t, :, :]
+    #         timestep_data = timestep_data.reshape(-1, 1, 10, 50)  # Shape: (batch_size, 1, 10, 50)
+    #         output_tensor = self.de_conv(timestep_data)
+    #
+    #         # Interpolate to the desired output size
+    #         output_tensor = nn.functional.interpolate(
+    #             output_tensor,
+    #             size=self.output_size,
+    #             mode='bilinear',
+    #             align_corners=False
+    #         )
+    #         outputs.append(output_tensor)
+    #
+    #     final_output = stack(outputs, dim=1).reshape(-1, 50, 10, 50)
+    #
+    #     return final_output
 
 class FCDeConvNet(nn.Module):
     def __init__(self, input_size, hidden1_size, hidden2_size, output_size):
@@ -26,11 +46,10 @@ class FCDeConvNet(nn.Module):
         self.fc1 = nn.Linear(input_size, hidden1_size)
         self.fc2 = nn.Linear(hidden1_size, hidden2_size)
         self.fc3 = nn.Linear(hidden2_size, output_size)
-        self.deconv = DeConvNet()
+        self.de_conv = DeConvNet(1, [128, 256, 1])
 
     def forward(self, x):
         x = relu(self.fc1(x))
         x = relu(self.fc2(x))
         x = self.fc3(x)
-        x = self.deconv(x.reshape(-1, 1, 10, 50))
-        return x
+        return self.de_conv(x.reshape(-1, 1, 10, 50))

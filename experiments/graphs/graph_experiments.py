@@ -13,8 +13,8 @@ from torch_geometric.loader import DataLoader
 from torch.utils.data import random_split
 
 from architecture.pignn.pignn import FlowPIGNN
-from architecture.pignn.deconv import FCDeConvNet
-from architecture.windspeedLSTM.windspeedLSTM import WindspeedLSTM
+from architecture.pignn.deconv import FCDeConvNet, DeConvNet
+from architecture.windspeedLSTM.windspeedLSTM import WindspeedLSTM, WindSpeedLSTMDeConv
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -39,13 +39,20 @@ class GraphDataset(Dataset):
 
 
 class GraphTemporalDataset(Dataset):
-    def __init__(self, root, seq_length, transform=None, pre_transform=None):
+    def __init__(self, root, seq_length, preload=True, transform=None, pre_transform=None):
         super(GraphTemporalDataset, self).__init__(root, transform, pre_transform)
         self.root = root
         self.seq_length = seq_length
+        self.preload = preload
+
+        if preload:
+            self.data = [torch.load(f"{self.root}/graph_{30005 + (start + i) * 5}.pt") for start in range(self.len()) for i in range(self.seq_length)]
 
     def _get_sequence(self, start):
-        return [torch.load(f"{self.root}/graph_{30005 + (start + i) * 5}.pt") for i in range(self.seq_length)]
+        if self.preload:
+            return [self.data[start + i] for i in range(self.seq_length)]
+        else:
+            return [torch.load(f"{self.root}/graph_{30005 + (start + i) * 5}.pt") for i in range(self.seq_length)]
 
     def len(self):
         return len([name for name in os.listdir(self.root)]) - 2 * self.seq_length
@@ -144,7 +151,7 @@ def train(model, train_params, train_loader, val_loader, output_folder):
             break
 
 
-def process_temporal_batch(batch, graph_model, temporal_model, criterion):
+def process_temporal_batch(batch, graph_model, temporal_model, criterion, embedding_size):
     generated_img = []
     target_img = []
     for i, seq in enumerate(batch[0]):
@@ -153,7 +160,7 @@ def process_temporal_batch(batch, graph_model, temporal_model, criterion):
         nf = torch.cat((seq.x.to(device), seq.pos.to(device)), dim=-1).float()
         ef = seq.edge_attr.to(device).float()
         gf = seq.global_feats.to(device).float()
-        graph_output = graph_model(seq, nf, ef, gf).reshape(-1, 128, 128)
+        graph_output = graph_model(seq, nf, ef, gf).reshape(-1, embedding_size[0], embedding_size[1])
         generated_img.append(graph_output)
         target_img.append(batch[1][i].y.to(device).reshape(-1, 128, 128))
 
@@ -163,11 +170,11 @@ def process_temporal_batch(batch, graph_model, temporal_model, criterion):
     return criterion(output, target)
 
 
-def train_temporal_epoch(train_loader, graph_model, temporal_model, criterion, optimizer, scheduler):
+def train_temporal_epoch(train_loader, graph_model, temporal_model, criterion, optimizer, scheduler, embedding_size):
     train_losses = []
     for i, batch in enumerate(train_loader):
         print(f"processing batch {i + 1}/{len(train_loader)}")
-        loss = process_temporal_batch(batch, graph_model, temporal_model, criterion)
+        loss = process_temporal_batch(batch, graph_model, temporal_model, criterion, embedding_size)
         train_losses.append(loss.item())
         optimizer.zero_grad()
         loss.backward()
@@ -176,20 +183,20 @@ def train_temporal_epoch(train_loader, graph_model, temporal_model, criterion, o
     return np.mean(train_losses)
 
 
-def eval_temporal_epoch(val_loader, graph_model, temporal_model, criterion):
+def eval_temporal_epoch(val_loader, graph_model, temporal_model, criterion, embedding_size):
     with torch.no_grad():
         graph_model.eval()
         temporal_model.eval()
         val_losses = []
         for batch in val_loader:
-            val_loss = process_temporal_batch(batch, graph_model, temporal_model, criterion)
+            val_loss = process_temporal_batch(batch, graph_model, temporal_model, criterion, embedding_size)
             val_losses.append(val_loss.item())
     graph_model.train()
     temporal_model.train()
     return np.mean(val_losses)
 
 
-def train_temporal(graph_model, temporal_model, train_params, train_loader, val_loader, output_folder):
+def train_temporal(graph_model, temporal_model, train_params, train_loader, val_loader, output_folder, embedding_size):
     optimizer = Adam(list(graph_model.parameters()) + list(temporal_model.parameters()), lr=0.01)
     criterion = nn.MSELoss().to(device)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50)
@@ -199,28 +206,26 @@ def train_temporal(graph_model, temporal_model, train_params, train_loader, val_
     epochs_no_improve = 0
 
     for epoch in range(1, num_epochs + 1):
-        with torch.autograd.profiler.profile(use_cuda=True) as prof:
-            # Perform a training and validation epoch
-            train_loss = train_temporal_epoch(train_loader, graph_model, temporal_model, criterion, optimizer, scheduler)
-            val_loss = eval_temporal_epoch(val_loader, graph_model, temporal_model, criterion)
-            learning_rate = optimizer.param_groups[0]['lr']
-            print(f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {train_loss}, validation loss: {val_loss}")
+        # Perform a training and validation epoch
+        train_loss = train_temporal_epoch(train_loader, graph_model, temporal_model, criterion, optimizer, scheduler, embedding_size)
+        val_loss = eval_temporal_epoch(val_loader, graph_model, temporal_model, criterion, embedding_size)
+        learning_rate = optimizer.param_groups[0]['lr']
+        print(f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {train_loss}, validation loss: {val_loss}")
 
-            # Save model pointers
-            torch.save(graph_model.state_dict(), f"{output_folder}/pignn_{epoch}.pt")
-            torch.save(temporal_model.state_dict(), f"{output_folder}/unet_lstm_{epoch}.pt")
+        # Save model pointers
+        torch.save(graph_model.state_dict(), f"{output_folder}/pignn_{epoch}.pt")
+        torch.save(temporal_model.state_dict(), f"{output_folder}/unet_lstm_{epoch}.pt")
 
-            # Check early stopping criterion
-            if val_loss < best_loss:
-                best_loss = val_loss
-                epochs_no_improve = 0
-            else:
-                epochs_no_improve += 1
+        # Check early stopping criterion
+        if val_loss < best_loss:
+            best_loss = val_loss
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
 
-            if epochs_no_improve >= train_params['early_stop_after']:
-                print(f'Early stopping at epoch {epoch}')
-                break
-        print(prof.key_averages().table(sort_by="cuda_time_total"))
+        if epochs_no_improve >= train_params['early_stop_after']:
+            print(f'Early stopping at epoch {epoch}')
+            break
 
 
 def create_output_folder(train_config, net_type):
@@ -261,7 +266,7 @@ def get_pignn_config():
     }
 
 
-def get_config(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, num_epochs=100, early_stop_after=5):
+def get_config(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, direct_lstm=False, num_epochs=100, early_stop_after=5):
     return get_pignn_config(), {
         'case_nr': case_nr,
         'wake_steering': wake_steering,
@@ -271,47 +276,44 @@ def get_config(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_s
         'early_stop_after': early_stop_after,
         'batch_size': batch_size,
         'seq_length': seq_length,
+        'direct_lstm': direct_lstm,
     }
 
 
-def run(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size):
-    model_cfg, train_cfg = get_config(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size)
-
+def run(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, direct_lstm):
+    model_cfg, train_cfg = get_config(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, direct_lstm)
+    is_direct_lstm = train_cfg['direct_lstm']
+    is_temporal = seq_length > 1
     post_fix = "LuT2deg_internal" if train_cfg['wake_steering'] else "BL"
-    net_type = f"pignn_deconv_{train_cfg['max_angle']}" if train_cfg['use_graph'] else "fcn_deconv"
-    data_folder = f"../../data/Case_0{train_cfg['case_nr']}/graphs/{post_fix}/{train_cfg['max_angle']}"
+    pignn_type = ("pignn_lstm_deconv" if is_direct_lstm else "pignn_unet_lstm") if is_temporal else "pignn_deconv"
+    net_type = f"{pignn_type}_{train_cfg['max_angle']}" if train_cfg['use_graph'] else "fcn_deconv"
 
+    data_folder = f"../../data/Case_0{train_cfg['case_nr']}/graphs/{post_fix}/{train_cfg['max_angle']}"
     output_folder = create_output_folder(train_cfg, net_type)
     save_config(output_folder, train_cfg)
 
-    dataset = GraphTemporalDataset(root=data_folder, seq_length=seq_length) if seq_length > 1 else GraphDataset(root=data_folder)
+    dataset = GraphTemporalDataset(root=data_folder, seq_length=seq_length) if is_temporal else GraphDataset(root=data_folder)
     train_loader, val_loader, test_loader = create_data_loaders(dataset, train_cfg['batch_size'], seq_length)
-    graph_model = FlowPIGNN(**model_cfg).to(device) if train_cfg['use_graph'] else FCDeConvNet(232, 650, 656, 500).to(device)
 
-    if seq_length > 1:
-        temporal_model = WindspeedLSTM(seq_length, 128).to(device)
-        train_temporal(graph_model, temporal_model, train_cfg, train_loader, val_loader, output_folder)
+    actor_model = DeConvNet(1, [128, 256, 1]) if not is_temporal or not is_direct_lstm else None
+    graph_model = FlowPIGNN(**model_cfg, actor_model=actor_model).to(device) if train_cfg['use_graph'] else FCDeConvNet(232, 650, 656, 500).to(device)
+
+    if is_temporal:
+        temporal_model = WindSpeedLSTMDeConv(seq_length, [512, 256, 1]).to(device) if is_direct_lstm else WindspeedLSTM(seq_length, 128).to(device)
+        embedding_size = (50, 10) if is_direct_lstm else (128, 128)
+        train_temporal(graph_model, temporal_model, train_cfg, train_loader, val_loader, output_folder, embedding_size)
     else:
         train(graph_model, train_cfg, train_loader, val_loader, output_folder)
 
 
 if __name__ == "__main__":
-    # parser = argparse.ArgumentParser(description='Run experiments with different configurations.')
-    # parser.add_argument('--case_nr', type=int, default=1, help='Case number to use for the experiment (default: 1)')
-    # parser.add_argument('--wake_steering', action='store_true', help='Enable wake steering (default: False)')
-    # parser.add_argument('--max_angle', type=int, default=90, help='Maximum angle for the experiment (default: 90)')
-    # parser.add_argument('--use_graph', action='store_true', help='Use graph representation (default: False)')
-    # parser.add_argument('--seq_length', type=int, default=1, help='Sequence length for the experiment (default: 1)')
-    # parser.add_argument('--batch_size', type=int, default=4, help='Batch size for the experiment (default: 4)')
-    # args = parser.parse_args()
-    # run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size)
-
-    run(1, False, 30, True, 50, 64)
-    run(1, False, 90, True, 1, 64)
-    run(1, False, 360, True, 1, 64)
-    run(1, False, 360, False, 1, 64)
-
-    run(1, True, 30, True, 1, 64)
-    run(1, True, 90, True, 1, 64)
-    run(1, True, 360, True, 1, 64)
-    run(1, True, 360, False, 1, 64)
+    parser = argparse.ArgumentParser(description='Run experiments with different configurations.')
+    parser.add_argument('--case_nr', type=int, default=1, help='Case number to use for the experiment (default: 1)')
+    parser.add_argument('--wake_steering', action='store_true', help='Enable wake steering (default: False)')
+    parser.add_argument('--max_angle', type=int, default=90, help='Maximum angle for the experiment (default: 90)')
+    parser.add_argument('--use_graph', action='store_true', help='Use graph representation (default: False)')
+    parser.add_argument('--seq_length', type=int, default=1, help='Sequence length for the experiment (default: 1)')
+    parser.add_argument('--batch_size', type=int, default=4, help='Batch size for the experiment (default: 4)')
+    parser.add_argument('--direct_lstm', action='store_true', help='Feed the PIGNN output directly to the LSTM (default: False)')
+    args = parser.parse_args()
+    run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size, args.direct_lstm)
