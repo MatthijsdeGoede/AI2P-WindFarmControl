@@ -36,8 +36,8 @@ class SineLayer(nn.Module):
     def forward(self, input):
         return torch.sin(self.omega_0 * self.linear(input))
     
-    
-    
+
+
 class Siren(nn.Module):
     def __init__(self, in_features, hidden_features, hidden_layers, out_features, outermost_linear=False, 
                  first_omega_0=30, hidden_omega_0=30.):
@@ -68,4 +68,60 @@ class Siren(nn.Module):
     def forward(self, coords):
         coords = coords.clone().detach().requires_grad_(True) # allows to take derivative w.r.t. input
         output = self.net(coords)
-        return output, coords        
+        return output, coords    
+
+
+
+class HSirenLayer(nn.Module):    
+    """
+    https://arxiv.org/pdf/2410.04716
+    """
+    def __init__(self, in_features, out_features):
+        super().__init__()        
+        self.in_features = in_features
+        self.linear = nn.Linear(in_features, out_features)
+        
+        self.init_weights()
+    
+    def init_weights(self):
+        with torch.no_grad():
+            self.linear.weight.uniform_(-1 / self.in_features, 
+                                            1 / self.in_features)      
+        
+    def forward(self, input):
+        return torch.sin(torch.sinh(2 * self.linear(input)))
+
+
+class HSiren(nn.Module):
+    """
+    https://arxiv.org/pdf/2410.04716
+    """    
+    def __init__(self, in_features, hidden_features, hidden_layers, out_features, 
+                 outermost_linear=True, hidden_omega_0=1):
+        super().__init__()
+        
+        self.net = []
+        self.net.append(HSirenLayer(in_features, hidden_features))
+
+        for i in range(hidden_layers):
+            self.net.append(SineLayer(hidden_features, hidden_features, 
+                                      is_first=False, omega_0=hidden_omega_0))
+
+        if outermost_linear:
+            final_linear = nn.Linear(hidden_features, out_features)
+            
+            with torch.no_grad():
+                final_linear.weight.uniform_(-np.sqrt(6 / hidden_features) / hidden_omega_0, 
+                                              np.sqrt(6 / hidden_features) / hidden_omega_0)
+                
+            self.net.append(final_linear)
+        else:
+            self.net.append(SineLayer(hidden_features, out_features, 
+                                      is_first=False, omega_0=hidden_omega_0))
+        
+        self.net = nn.Sequential(*self.net)
+    
+    def forward(self, coords):
+        coords = coords.clone().detach().requires_grad_(True) # allows to take derivative w.r.t. input
+        output = self.net(coords)
+        return output, coords    
