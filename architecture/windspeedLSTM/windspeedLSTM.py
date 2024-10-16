@@ -6,11 +6,10 @@ from architecture.windspeedLSTM.custom_unet import CustomUNet
 
 
 class WindspeedLSTM(nn.Module):
-    def __init__(self, sequence_length, input_size):
+    def __init__(self, sequence_length):
         super(WindspeedLSTM, self).__init__()
         center_nn = WindspeedLSTMHelper()
         self.unet = CustomUNet(sequence_length, sequence_length, center_nn)
-        print(sequence_length, input_size)
 
     def forward(self, x):
         x = self.unet(x)
@@ -22,12 +21,12 @@ class WindspeedLSTMHelper(nn.Module):
         super(WindspeedLSTMHelper, self).__init__()
 
         self.flatten = nn.Flatten(start_dim=2)
-        self.lstm = nn.LSTM(64, 64, dtype=torch.float64)
+        self.lstm = nn.LSTM(324, 324)
 
     def forward(self, x):
         x = self.flatten(x)
         x, _ = self.lstm(x)
-        return x.reshape(-1, 1024, 8, 8)
+        return x.reshape(-1, 1024, 18, 18)
 
 
 class WindSpeedLSTMDeConv(nn.Module):

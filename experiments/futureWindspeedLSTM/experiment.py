@@ -7,19 +7,25 @@ import torch
 import torch.nn as nn
 
 from architecture.windspeedLSTM.windspeedLSTM import WindspeedLSTM
-from experiments.futureWindspeedLSTM.WindspeedMapDataset import create_data_loaders
+from experiments.futureWindspeedLSTM.WindspeedMapDataset import create_data_loaders, WindspeedMapDataset, get_dataset
 from utils.preprocessing import resize_windspeed
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-
 def load_config(case):
     return {
         "case": case,
-        "root_dir": f"../../data/Case_0{case}/measurements_flow/postProcessing_BL/windspeedMapScalars",
+        "dataset_dirs": [
+            f"../../data/Case_01/measurements_flow/postProcessing_BL/windspeedMapScalars",
+            f"../../data/Case_01/measurements_flow/postProcessing_LuT2deg_internal/windspeedMapScalars",
+            # f"../../data/Case_01/measurements_flow/postProcessing_BL/windspeedMapScalars",
+            # f"../../data/Case_01/measurements_flow/postProcessing_LuT2deg_internal/windspeedMapScalars",
+            # f"../../data/Case_02/measurements_flow/postProcessing_BL/windspeedMapScalars",
+            # f"../../data/Case_02/measurements_flow/postProcessing_LuT2deg_internal/windspeedMapScalars"
+            ],
         "sequence_length": 50,
         "batch_size": 4,
-        "scale": (128, 128)
+        "scale": (300, 300)
     }
 
 
@@ -31,17 +37,18 @@ def create_transform(scale):
 
 
 def run():
-    case = 1
+    case = 123
     config = load_config(case)
 
-    root_dir = config["root_dir"]
     sequence_length = config["sequence_length"]
     batch_size = config["batch_size"]
     scale = config["scale"]
+    transform = create_transform(scale)
 
-    train_loader, val_loader, test_loader = create_data_loaders(root_dir, sequence_length, batch_size,
-                                                                transform=create_transform(scale))
-    model = WindspeedLSTM(sequence_length, 300).to(device)
+    dataset = get_dataset(config["dataset_dirs"], sequence_length, transform)
+
+    train_loader, val_loader, test_loader = create_data_loaders(dataset, batch_size)
+    model = WindspeedLSTM(sequence_length).to(device)
 
     output_folder = create_output_folder(case)
 
@@ -98,7 +105,7 @@ def train(model, train_loader, val_loader, output_folder):
         else:
             epochs_no_improve += 1
 
-        if epochs_no_improve >= 5:
+        if epochs_no_improve >= 10:
             print(f'Early stopping at epoch {epoch}')
             break
 
