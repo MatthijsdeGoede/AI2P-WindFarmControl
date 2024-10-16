@@ -19,7 +19,7 @@ def prepare_graph_training_data():
     max_ts = 42000
     step = 5
     data_range = range(min_ts, max_ts + 1, step)
-    max_angle = 30
+    max_angle = 360
 
     data_dir = f"../../data/Case_0{case_nr}"
     flow_data_dir = f"{data_dir}/measurements_flow/postProcessing_{type}"
@@ -37,7 +37,7 @@ def prepare_graph_training_data():
     # Get the features for every wind turbine (node features)
     turbine_pos = torch.tensor(read_turbine_positions(layout_file))  # (10x2)
     wind_speeds = torch.tensor(np.load(f"{flow_data_dir}/windspeed_estimation_case_0{case_nr}_30000_{type}.npy")[0:, ::2][0:, step::step])  # (10x2400)
-    yaw_measurement = torch.tensor(read_measurement(turbine_data_dir, "nacYaw"))  # (10x2400)
+    yaw_measurement = (torch.tensor(read_measurement(turbine_data_dir, "nacYaw")) * -1 + 270) % 360  # (10x2400)
     rotation_measurement = torch.tensor(read_measurement(turbine_data_dir, "rotSpeed"))  # (10x2400)
 
     # Create custom dataset
