@@ -14,6 +14,7 @@ from PINN import PINN
 from GridDataset import GridDataset
 from IncNSLoss import NSLoss
 
+
 assert torch.cuda.is_available()
 
 generator = torch.Generator()
@@ -62,8 +63,8 @@ def load_model_optimizer(model, optimizer, model_save_path):
 
 
 def main(physics_coef: float, 
-        depth: int,
         hidden_size: int, 
+        depth: int,
         tanh: bool, 
         use_checkpoint: bool, 
         model_save_path: str, 
@@ -87,7 +88,7 @@ def main(physics_coef: float,
     val_losses = defaultdict(list)
 
     start_epoch = 0
-    end_epoch = 200
+    end_epoch = 100
     if (use_checkpoint):
         start_epoch, train_losses, val_losses = load_model_optimizer(model, optimizer, model_save_path)
         end_epoch += start_epoch
@@ -124,7 +125,7 @@ def main(physics_coef: float,
             optimizer.zero_grad()
                 
             loss.backward()
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), 2.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 2.0)
             optimizer.step()
 
             running_train_losses['total'].append(loss.item())
@@ -215,13 +216,6 @@ if __name__ == "__main__":
 
     writer = SummaryWriter(f"runs/{model_type}{args.hidden_size}-d{args.depth}-p{args.physics}", flush_secs=30)
 
-    try:
-        main(physics, 
-            args.hidden_size,
-            args.depth,
-            args.tanh, 
-            args.use_checkpoint, 
-            model_save_path, 
-            writer)
+    try: main(physics, args.hidden_size, args.depth, args.tanh, args.use_checkpoint, model_save_path, writer)
     except: pass
     finally: writer.close()
