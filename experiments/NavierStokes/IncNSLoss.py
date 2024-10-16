@@ -23,9 +23,11 @@ tensor for the specific input
 
 
 MU = 1.7894e-5 #Dynamic viscosity of air
+NU = 1.461e-5 #Kinematic viscosity of air
+DENSITY = 1.2041 #Atmospheric air density at 20 celsius (kg/m3)
 
 def momentum_x_component(output, grads):
-    u_pred, v_pred, rho_pred = output[:, 0], output[:, 1], output[:, 3]
+    u_pred, v_pred = output[:, 0], output[:, 1]
 
     u_grad = grads["u_grad"]
     u_t = u_grad[:, 2]
@@ -39,12 +41,12 @@ def momentum_x_component(output, grads):
     u_yy = u_hessian[:, 1]
 
     #rho * (u_t + u*u_x + v*u_y) + p_x - MU (u2_x2 + u2_y2) = 0
-    momentum = rho_pred * (u_t + u_pred*u_x + v_pred*u_y) + p_x - MU * (u_xx + u_yy)
+    momentum = DENSITY * (u_t + u_pred*u_x + v_pred*u_y) + p_x - MU * (u_xx + u_yy)
     momentum_loss = momentum.pow(2).mean()
     return momentum_loss
 
 def momentum_y_component(output, grads):
-    u_pred, v_pred, rho_pred = output[:, 0], output[:, 1], output[:, 3]
+    u_pred, v_pred = output[:, 0], output[:, 1]
 
     v_grads = grads["v_grad"]
     v_t = v_grads[:, 2]
@@ -58,12 +60,12 @@ def momentum_y_component(output, grads):
     v_yy = v_hessian[:, 1]
 
 
-    momentum = rho_pred * (v_t + u_pred * v_x + v_pred * v_y) + p_y - MU * (v_xx + v_yy)
+    momentum = DENSITY * (v_t + u_pred * v_x + v_pred * v_y) + p_y - MU * (v_xx + v_yy)
     momentum_loss = momentum.pow(2).mean()
     return momentum_loss
 
 def momemntum_z_component(output, grads):
-    u_pred, v_pred, rho_pred = output[:, 0], output[:, 1], output[:, 3]
+    u_pred, v_pred = output[:, 0], output[:, 1]
 
     w_grads = grads["w_grad"]
     w_t = w_grads[:, 2]
@@ -74,7 +76,7 @@ def momemntum_z_component(output, grads):
     w_xx = w_hessian[:, 0]
     w_yy = w_hessian[:, 1]
 
-    momentum = rho_pred * (w_t + u_pred * w_x + v_pred * w_y) - MU * (w_xx + w_yy)
+    momentum = DENSITY * (w_t + u_pred * w_x + v_pred * w_y) - MU * (w_xx + w_yy)
     momentum_loss = momentum.pow(2).mean()
     return momentum_loss
 
@@ -96,7 +98,8 @@ def data_loss_func(output, target):
     return torch.nn.functional.mse_loss(flow_velocity, target)
 
 def calculate_grads(input, output):
-    u_pred, v_pred, w_pred, rho_pred, p_pred = output[:, 0], output[:, 1], output[:, 2], output[:, 3], output[:, 4]
+    "Output: u, v, w, pressure, Reynolds number (coming soon)"
+    u_pred, v_pred, w_pred, p_pred = output[:, 0], output[:, 1], output[:, 2], output[:, 3]
 
     u_grad = autograd.grad(u_pred, input, grad_outputs=torch.ones_like(u_pred), create_graph=True)[0][:, :3]
     v_grad = autograd.grad(v_pred, input, grad_outputs=torch.ones_like(v_pred), create_graph=True)[0][:, :3]
@@ -127,21 +130,20 @@ class NSLoss(torch.nn.Module):
         self._physics_coef = physics_coef
 
         self.calculate_alpha(target_epoch)
-
+    
+    def forward(self, input, output, target):
+        data = data_loss_func(output, target)
+        physics = physics_loss_func(input, output) * self._physics_coef
+        total_loss = data + physics
+        
+        return  total_loss, data, physics
+    
     def calculate_alpha(self, target_epoch):
         """
         Calculates the alpha (physics coefficient multiplier) based on reaching
         the max value at the target epoch. Assumes starting at 1.
         """
-        self.alpha = self.max_value ** (1/target_epoch)
-
-    
-    def forward(self, input, output, target):
-        data = data_loss_func(output, target)
-        physics = physics_loss_func(input, output)
-        total_loss = data + self._physics_coef * physics
-        
-        return  total_loss, data, physics
+        self.alpha = self.max_value ** (1/target_epoch) 
     
     def increase(self):
         self.physics_coef *= self.alpha

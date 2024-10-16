@@ -21,5 +21,6 @@ class PINN(torch.nn.Module):
 
         x = self.output(x)
         
-        #Output: u, v, w, rho, p
+        #Output (compressible): u, v, w, rho, p, (Re)
+        #Output (incompressible): u, v, w, p
         return x, coords
