@@ -1,20 +1,24 @@
 from typing import Optional
 
 import gymnasium as gym
+import torch
 from gymnasium import spaces
 from gymnasium.utils import env_checker
 
 import numpy as np
 
-from architecture.windspeedLSTM.windspeedLSTM import WindspeedLSTM
+from architecture.pignn.deconv import DeConvNet
+from architecture.pignn.pignn import FlowPIGNN
+from experiments.graphs.graph_experiments import get_pignn_config
 from utils.extract_windspeed import WindspeedExtractor
-from utils.preprocessing import read_turbine_positions
+from utils.preprocessing import read_turbine_positions, angle_to_vec, create_turbine_graph_tensors
 
 
 class TurbineEnv(gym.Env):
     metadata = {"render_modes": ["rgb_array"], "render_fps": 4}
 
     def __init__(self, windspeedmap_model, turbine_locations, render_mode=None, map_size = 300, yaw_step=5, max_yaw=30):
+        self.turbine_locations = turbine_locations
         self.n_turbines = len(turbine_locations)
 
         # Model to predict the wind speed map
@@ -85,14 +89,21 @@ class TurbineEnv(gym.Env):
         # Convert actions to actual yaw values
         yaws = self._action_to_yaw(action)
 
-        wind_speed_map = self.model(yaws)
+        x = torch.tensor(yaws).reshape(-1, 1).float()
+        pos = torch.tensor(self.turbine_locations)
+        nf = torch.cat((x, pos), dim=-1).float()
+        wind_vec = angle_to_vec(self._wind_direction)
+        _, ef = create_turbine_graph_tensors(self.turbine_locations, wind_vec, max_angle=30)
+        gf = wind_vec.reshape(-1, 2)
+
+        wind_speed_map = self.model(yaws, nf, ef, gf)
 
         windspeeds = self.windspeed_extractor(wind_speed_map, self._wind_direction, yaws)
 
         # TODO convert windspeeds to a power estimate
         power = windspeeds
 
-        self._yaws = self._yaw_to_action(yaws)
+        self._yaws = action
 
         observation = self._get_obs()
         info = self._get_info()
@@ -112,7 +123,10 @@ class TurbineEnv(gym.Env):
 
 if __name__ == "__main__":
     # Make sure to actually use model that accepts an array of yaw angles instead of this, and load the pretrained weights.
-    model = WindspeedLSTM(50)
+    model_cfg = get_pignn_config()
+    actor_model = DeConvNet(1, [128, 256, 1])
+    model = FlowPIGNN(**model_cfg, actor_model=actor_model)
+    model.load_state_dict(torch.load("model_case01/pignn_best.pt"))
 
     case = 1
     turbines = "12_to_15" if case == 1 else "06_to_09" if case == 2 else "00_to_03"
