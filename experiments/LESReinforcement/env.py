@@ -2,6 +2,8 @@ from typing import Optional
 
 import gymnasium as gym
 import torch
+from torch_geometric.data import Data
+from torch_geometric.loader import DataLoader
 from gymnasium import spaces
 from gymnasium.utils import env_checker
 
@@ -17,9 +19,10 @@ from utils.preprocessing import read_turbine_positions, angle_to_vec, create_tur
 class TurbineEnv(gym.Env):
     metadata = {"render_modes": ["rgb_array"], "render_fps": 4}
 
-    def __init__(self, windspeedmap_model, turbine_locations, render_mode=None, map_size = 300, yaw_step=5, max_yaw=30):
-        self.turbine_locations = turbine_locations
+    def __init__(self, windspeedmap_model, turbine_locations, render_mode=None, map_size = 128, yaw_step=5, max_yaw=30):
+        self.turbine_locations = torch.tensor(turbine_locations)
         self.n_turbines = len(turbine_locations)
+        self.map_size = map_size
 
         # Model to predict the wind speed map
         self.model = windspeedmap_model
@@ -30,7 +33,7 @@ class TurbineEnv(gym.Env):
         self._n_yaw_steps = max_yaw // yaw_step
 
         # Define some variables to keep track off
-        self._wind_direction = 0
+        self._wind_direction = [0]
         self._yaws = np.zeros(self.n_turbines, dtype=int)
 
         # Observations that are available to the agent, the current global wind direction and the current yaw angles
@@ -90,13 +93,23 @@ class TurbineEnv(gym.Env):
         yaws = self._action_to_yaw(action)
 
         x = torch.tensor(yaws).reshape(-1, 1).float()
-        pos = torch.tensor(self.turbine_locations)
-        nf = torch.cat((x, pos), dim=-1).float()
-        wind_vec = angle_to_vec(self._wind_direction)
-        _, ef = create_turbine_graph_tensors(self.turbine_locations, wind_vec, max_angle=30)
-        gf = wind_vec.reshape(-1, 2)
+        pos = self.turbine_locations
+        wind_vec = angle_to_vec(self._wind_direction[0])
+        ei, ef = create_turbine_graph_tensors(self.turbine_locations, wind_vec, max_angle=30)
+        gf = torch.tensor(wind_vec).reshape(-1, 2)
 
-        wind_speed_map = self.model(yaws, nf, ef, gf)
+        data = Data(x=x, edge_index=ei, edge_attr=ef.float(), pos=pos)
+        data.global_feats = gf
+
+        mini_batch = next(iter(DataLoader([data])))
+
+        x, pos, edge_attr, glob = mini_batch.x, mini_batch.pos, mini_batch.edge_attr.float(), mini_batch.global_feats.float()
+        nf = torch.cat((x, pos), dim=-1).float()
+
+        model.eval()
+
+        with torch.no_grad():
+            wind_speed_map = model(mini_batch, nf, edge_attr, glob).reshape(self.map_size, self.map_size)
 
         windspeeds = self.windspeed_extractor(wind_speed_map, self._wind_direction, yaws)
 
@@ -110,7 +123,7 @@ class TurbineEnv(gym.Env):
 
         # return tuple in form observation, reward, terminated, truncated, info.
         # Power is the reward, and as of now, the environment does not terminate.
-        return observation, power, False, False, info
+        return observation, np.sum(power), False, False, info
 
     def render(self):
         if self.render_mode == "rgb_array":
