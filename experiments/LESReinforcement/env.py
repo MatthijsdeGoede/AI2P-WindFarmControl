@@ -14,6 +14,7 @@ from architecture.pignn.pignn import FlowPIGNN
 from experiments.graphs.graph_experiments import get_pignn_config
 from utils.extract_windspeed import WindspeedExtractor
 from utils.preprocessing import read_turbine_positions, angle_to_vec, create_turbine_graph_tensors
+from utils.visualization import plot_mean_absolute_speed
 
 
 class TurbineEnv(gym.Env):
@@ -80,7 +81,6 @@ class TurbineEnv(gym.Env):
         if "yaws" in options:
             self._yaws = options["yaws"]
         else:
-            # TODO: check if this is allowed and does not mess with the RNG, else replace it with self.np_random
             self._yaws = self.np_random.integers(-self._n_yaw_steps, self._n_yaw_steps + 1, size=self.n_turbines)
 
         observation = self._get_obs()
@@ -111,10 +111,12 @@ class TurbineEnv(gym.Env):
         with torch.no_grad():
             wind_speed_map = model(mini_batch, nf, edge_attr, glob).reshape(self.map_size, self.map_size)
 
+
         windspeeds = self.windspeed_extractor(wind_speed_map, self._wind_direction, yaws)
 
         # TODO convert windspeeds to a power estimate
-        power = windspeeds
+        diff_yaw = yaws - self._wind_direction[0]
+        power = np.sin(diff_yaw) * np.pow(windspeeds, 3)
 
         self._yaws = action
 
@@ -131,6 +133,33 @@ class TurbineEnv(gym.Env):
 
     def _render_frame(self):
         # Render a wind speed map with current yaws
+        # Convert actions to actual yaw values
+        yaws = self._action_to_yaw(self._yaws)
+
+        x = torch.tensor(yaws).reshape(-1, 1).float()
+        pos = self.turbine_locations
+        wind_vec = angle_to_vec(self._wind_direction[0])
+        ei, ef = create_turbine_graph_tensors(self.turbine_locations, wind_vec, max_angle=30)
+        gf = torch.tensor(wind_vec).reshape(-1, 2)
+
+        data = Data(x=x, edge_index=ei, edge_attr=ef.float(), pos=pos)
+        data.global_feats = gf
+
+        mini_batch = next(iter(DataLoader([data])))
+
+        x, pos, edge_attr, glob = mini_batch.x, mini_batch.pos, mini_batch.edge_attr.float(), mini_batch.global_feats.float()
+        nf = torch.cat((x, pos), dim=-1).float()
+
+        model.eval()
+
+        with torch.no_grad():
+            wind_speed_map = model(mini_batch, nf, edge_attr, glob).reshape(self.map_size, self.map_size)
+
+        turbine_pixels = []
+
+        self.windspeed_extractor(wind_speed_map, self._wind_direction, yaws, turbine_pixels)
+
+        plot_mean_absolute_speed(wind_speed_map, wind_vec, windmill_blades=turbine_pixels)
 
         return
 
@@ -146,5 +175,18 @@ if __name__ == "__main__":
     layout_file = f"../../data/Case_0{case}/HKN_{turbines}_layout_balanced.csv"
     turbine_locations = read_turbine_positions(layout_file)
 
-    env = TurbineEnv(model, turbine_locations)
-    env_checker.check_env(env)
+    env = TurbineEnv(model, turbine_locations, render_mode="rgb_array")
+
+    wind_direction = np.array([225])
+    yaws = np.array([225] * 10)
+    options = {
+        "wind_direction": wind_direction,
+        "yaws": yaws
+    }
+
+    env.reset(options=options)
+
+    env.render()
+
+    print("Starting check", flush=True)
+    # env_checker.check_env(env)
