@@ -85,13 +85,13 @@ def add_quiver(ax, wind_vec, center):
                angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
 
 def add_imshow(fig, ax, umean_abs, color_bar=False):
-    axesImage = ax.imshow(umean_abs, extent=(0, 300, 0, 300), origin='lower', aspect='auto')
+    axesImage = ax.imshow(umean_abs, extent=(0, 128, 0, 128), origin='lower', aspect='auto')
     fig.colorbar(axesImage, ax=ax, label='Mean Velocity (UmeanAbs)')
     ax.set_xlabel('X-axis')
     ax.set_ylabel('Y-axis')
     return axesImage
 
-def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file, windmill_blades=None):
+def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file=None, windmill_blades=None):
     """"
     Plots the mean absolute wind speed over the given grid
     inputs:
