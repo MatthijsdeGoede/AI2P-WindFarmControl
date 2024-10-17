@@ -16,6 +16,7 @@ from utils.extract_windspeed import WindspeedExtractor
 from utils.preprocessing import read_turbine_positions, angle_to_vec, create_turbine_graph_tensors
 from utils.visualization import plot_mean_absolute_speed
 
+device = torch.device("cpu")
 
 class TurbineEnv(gym.Env):
     metadata = {"render_modes": ["rgb_array"], "render_fps": 4}
@@ -117,7 +118,7 @@ class TurbineEnv(gym.Env):
 
         # TODO convert windspeeds to a power estimate
         diff_yaw = np.deg2rad(yaws - self._wind_direction[0])
-        power = np.sin(diff_yaw) * np.pow(windspeeds, 3)
+        power = np.sin(diff_yaw) * (windspeeds ** 3)
 
         self._yaws = action
 
@@ -163,6 +164,21 @@ class TurbineEnv(gym.Env):
         plot_mean_absolute_speed(wind_speed_map, wind_vec, windmill_blades=turbine_pixels)
 
         return
+
+def create_env(case=1):
+    # Parallel environments
+    # Make sure to actually use model that accepts an array of yaw angles instead of this, and load the pretrained weights.
+    model_cfg = get_pignn_config()
+    actor_model = DeConvNet(1, [128, 256, 1])
+    flow_model = FlowPIGNN(**model_cfg, actor_model=actor_model)
+    flow_model.load_state_dict(torch.load("model_case01/pignn_best.pt"))
+
+    turbines = "12_to_15" if case == 1 else "06_to_09" if case == 2 else "00_to_03"
+    layout_file = f"../../data/Case_0{case}/HKN_{turbines}_layout_balanced.csv"
+    turbine_locations = read_turbine_positions(layout_file)
+
+    env = TurbineEnv(flow_model, turbine_locations, render_mode="rgb_array")
+    return env
 
 if __name__ == "__main__":
     # Make sure to actually use model that accepts an array of yaw angles instead of this, and load the pretrained weights.
