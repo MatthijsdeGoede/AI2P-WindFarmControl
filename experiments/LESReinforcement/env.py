@@ -41,16 +41,16 @@ class TurbineEnv(gym.Env):
         self.observation_space = spaces.Dict(
             {
                 "wind_direction": gym.spaces.Box(0, 360, dtype=int),
-                "yaws": spaces.MultiDiscrete([2 * self._n_yaw_steps + 1] * self.n_turbines, start=[-self._n_yaw_steps] * self.n_turbines)
+                "yaws": spaces.MultiDiscrete([2 * self._n_yaw_steps + 1] * self.n_turbines)
             }
         )
 
         # Actions the agents can take, it can select the new yaw angles for the turbines
-        self.action_space = spaces.MultiDiscrete([2 * self._n_yaw_steps + 1] * self.n_turbines, start=[-self._n_yaw_steps] * self.n_turbines)
+        self.action_space = spaces.MultiDiscrete([2 * self._n_yaw_steps + 1] * self.n_turbines)
 
         # Convert action to an actual yaw angle
-        self._action_to_yaw = lambda action : action * yaw_step
-        self._yaw_to_action = lambda yaw : yaw // yaw_step
+        self._action_to_yaw = lambda action : (action - self._n_yaw_steps) * yaw_step
+        # self._yaw_to_action = lambda yaw : yaw // yaw_step
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
@@ -81,7 +81,8 @@ class TurbineEnv(gym.Env):
         if "yaws" in options:
             self._yaws = options["yaws"]
         else:
-            self._yaws = self.np_random.integers(-self._n_yaw_steps, self._n_yaw_steps + 1, size=self.n_turbines)
+            # TODO: only use values actually observed in training the wind speed map
+            self._yaws = self.np_random.integers(0, 2 * self._n_yaw_steps + 1, size=self.n_turbines)
 
         observation = self._get_obs()
         info = self._get_info()
@@ -106,16 +107,16 @@ class TurbineEnv(gym.Env):
         x, pos, edge_attr, glob = mini_batch.x, mini_batch.pos, mini_batch.edge_attr.float(), mini_batch.global_feats.float()
         nf = torch.cat((x, pos), dim=-1).float()
 
-        model.eval()
+        self.model.eval()
 
         with torch.no_grad():
-            wind_speed_map = model(mini_batch, nf, edge_attr, glob).reshape(self.map_size, self.map_size)
+            wind_speed_map = self.model(mini_batch, nf, edge_attr, glob).reshape(self.map_size, self.map_size)
 
 
         windspeeds = self.windspeed_extractor(wind_speed_map, self._wind_direction, yaws)
 
         # TODO convert windspeeds to a power estimate
-        diff_yaw = yaws - self._wind_direction[0]
+        diff_yaw = np.deg2rad(yaws - self._wind_direction[0])
         power = np.sin(diff_yaw) * np.pow(windspeeds, 3)
 
         self._yaws = action
@@ -142,7 +143,7 @@ class TurbineEnv(gym.Env):
         ei, ef = create_turbine_graph_tensors(self.turbine_locations, wind_vec, max_angle=30)
         gf = torch.tensor(wind_vec).reshape(-1, 2)
 
-        data = Data(x=x, edge_index=ei, edge_attr=ef.float(), pos=pos)
+        data = Data(x=x, edge_index=ei, edge_attr=ef.float(), pos=pos).to("cpu")
         data.global_feats = gf
 
         mini_batch = next(iter(DataLoader([data])))
@@ -150,10 +151,10 @@ class TurbineEnv(gym.Env):
         x, pos, edge_attr, glob = mini_batch.x, mini_batch.pos, mini_batch.edge_attr.float(), mini_batch.global_feats.float()
         nf = torch.cat((x, pos), dim=-1).float()
 
-        model.eval()
+        self.model.eval()
 
         with torch.no_grad():
-            wind_speed_map = model(mini_batch, nf, edge_attr, glob).reshape(self.map_size, self.map_size)
+            wind_speed_map = self.model(mini_batch, nf, edge_attr, glob).reshape(self.map_size, self.map_size)
 
         turbine_pixels = []
 
@@ -189,4 +190,4 @@ if __name__ == "__main__":
     env.render()
 
     print("Starting check", flush=True)
-    # env_checker.check_env(env)
+    env_checker.check_env(env)
