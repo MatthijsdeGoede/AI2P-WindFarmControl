@@ -298,8 +298,7 @@ def run(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, di
     dataset = GraphTemporalDataset(root=data_folder, seq_length=seq_length) if is_temporal else GraphDataset(root=data_folder)
     train_loader, val_loader, test_loader = create_data_loaders(dataset, train_cfg['batch_size'], seq_length)
 
-    actor_model = DeConvNet(1, [128, 256, 1]) if not is_temporal or not is_direct_lstm else None
-    graph_model = FlowPIGNN(**model_cfg, actor_model=actor_model).to(device) if train_cfg['use_graph'] else FCDeConvNet(232, 650, 656, 500).to(device)
+    graph_model = FlowPIGNN(**model_cfg).to(device) if train_cfg['use_graph'] else FCDeConvNet(232, 650, 656, 500).to(device)
 
     if is_temporal:
         temporal_model = WindSpeedLSTMDeConv(seq_length, [512, 256, 1]).to(device) if is_direct_lstm else WindspeedLSTM(seq_length, 128).to(device)
@@ -321,12 +320,12 @@ if __name__ == "__main__":
     # args = parser.parse_args()
     # run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size, args.direct_lstm)
 
-    # run(1, False, 30, True, 1, 64, False)
+    run(1, False, 30, True, 1, 64, False)
     # run(1, False, 90, True, 1, 64, False)
     # run(1, False, 360, True, 1, 64, False)
     # run(1, False, 360, False, 1, 64, False)
 
-    run(1, True, 30, True, 1, 64, False)
-    run(1, True, 90, True, 1, 64, False)
-    run(1, True, 360, True, 1, 64, False)
+    # run(1, True, 30, True, 1, 64, False)
+    # run(1, True, 90, True, 1, 64, False)
+    # run(1, True, 360, True, 1, 64, False)
     # run(1, True, 360, False, 1, 64, False)

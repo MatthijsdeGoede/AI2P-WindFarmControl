@@ -90,7 +90,7 @@ class FlowPIGNN(PowerPIGNN):
         self.num_nodes = num_nodes
 
         # Actor model on the node embeddings
-        self.actor_model = actor_model
+        self.actor_model = DeConvNet(1, [128, 256, 1])
 
     # Override
     def forward(self, data, nf, ef, gf):

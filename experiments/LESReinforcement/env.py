@@ -183,8 +183,7 @@ def create_env(case=1):
 if __name__ == "__main__":
     # Make sure to actually use model that accepts an array of yaw angles instead of this, and load the pretrained weights.
     model_cfg = get_pignn_config()
-    actor_model = DeConvNet(1, [128, 256, 1])
-    model = FlowPIGNN(**model_cfg, actor_model=actor_model)
+    model = FlowPIGNN(**model_cfg).to(device)
     model.load_state_dict(torch.load("model_case01/pignn_best.pt"))
 
     case = 1

@@ -16,9 +16,12 @@ def predict():
     env = create_env()
     model = PPO.load("TurbineEnvModel")
 
-    obs, info = env.reset()
-    action, _states = model.predict(obs)
-    obs, rewards, dones, truncations, info = env.step(action)
+    for i in range(10):
+        obs, info = env.reset()
+        action, _states = model.predict(obs)
+        obs, rewards, dones, truncations, info = env.step(action)
+        env.render()
+
 
 if __name__ == "__main__":
     train()
