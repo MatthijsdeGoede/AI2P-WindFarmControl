@@ -14,12 +14,10 @@ def train():
     fig_callback = FigureRecorderCallback(env)
     ntimestep_callback = EveryNTimesteps(n_steps=500, callback=fig_callback)
 
-    checkpoint_callback = CheckpointCallback(save_freq=1000, save_path="./logs/")
-
-
+    checkpoint_callback = CheckpointCallback(save_freq=1000, save_path="./models/", name_prefix="a2c_model")
 
     model = A2C("MultiInputPolicy", env, verbose=1, device=device, tensorboard_log="./turbine_env/")
-    model.learn(total_timesteps=200000, progress_bar=True, tb_log_name="A2C", callback=ntimestep_callback)
+    model.learn(total_timesteps=200000, progress_bar=True, tb_log_name="A2C", callback=[checkpoint_callback, ntimestep_callback])
     model.save("A2CTurbineEnvModel")
 
 def predict():
