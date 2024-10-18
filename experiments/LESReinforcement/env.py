@@ -2,6 +2,7 @@ from typing import Optional
 
 import gymnasium as gym
 import torch
+from gymnasium.wrappers import TimeLimit
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from gymnasium import spaces
@@ -75,8 +76,7 @@ class TurbineEnv(gym.Env):
         if "wind_direction" in options:
             self._wind_direction = correct_angles(options["wind_direction"])
         else:
-            # Else generate a random direction (TODO: only use values actually observed in training the wind speed map)
-            self._wind_direction = self.np_random.integers(0, 360, size=(1,), dtype=int)
+            self._wind_direction =  correct_angles(self.np_random.integers(220, 261, size=(1,), dtype=int))
 
         if "yaws" in options:
             self._yaws = self._yaw_to_action(correct_angles(options["yaws"]), self._wind_direction[0])
@@ -169,21 +169,23 @@ class TurbineEnv(gym.Env):
 def create_env(case=1):
     # Parallel environments
     # Make sure to actually use model that accepts an array of yaw angles instead of this, and load the pretrained weights.
+    max_episode_steps = 100
     model_cfg = get_pignn_config()
     map_size = (300, 300)
-    flow_model = FlowPIGNN(**model_cfg, output_size=map_size)
-    flow_model.load_state_dict(torch.load("model_case01/pignn_best.pt"))
+    model = FlowPIGNN(**model_cfg, output_size=map_size)
+    model.load_state_dict(torch.load("model_case01/pignn_best.pt"))
 
     turbines = "12_to_15" if case == 1 else "06_to_09" if case == 2 else "00_to_03"
     layout_file = f"../../data/Case_0{case}/HKN_{turbines}_layout_balanced.csv"
     turbine_locations = read_turbine_positions(layout_file)
 
-    env = TurbineEnv(flow_model, turbine_locations, render_mode="rgb_array", map_size=map_size[0])
+    env = TimeLimit(TurbineEnv(model, turbine_locations, render_mode="rgb_array", map_size=map_size[0]), max_episode_steps=max_episode_steps)
     return env
 
 
 if __name__ == "__main__":
     # Make sure to actually use model that accepts an array of yaw angles instead of this, and load the pretrained weights.
+    max_episode_steps = 100
     model_cfg = get_pignn_config()
     map_size = (300, 300)
     model = FlowPIGNN(**model_cfg, output_size=map_size).to(device)
@@ -194,7 +196,7 @@ if __name__ == "__main__":
     layout_file = f"../../data/Case_0{case}/HKN_{turbines}_layout_balanced.csv"
     turbine_locations = read_turbine_positions(layout_file)
 
-    env = TurbineEnv(model, turbine_locations, render_mode="rgb_array", map_size=map_size[0])
+    env = TimeLimit(TurbineEnv(model, turbine_locations, render_mode="rgb_array", map_size=map_size[0]), max_episode_steps=max_episode_steps)
 
     wind_direction = np.array([225])
     yaws = np.array([225] * 10)
