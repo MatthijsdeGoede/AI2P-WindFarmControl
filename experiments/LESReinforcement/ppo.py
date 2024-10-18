@@ -9,7 +9,7 @@ def train():
     env = create_env()
 
     model = PPO("MultiInputPolicy", env, verbose=1, device=device, tensorboard_log="./ppo_turbine_env/")
-    model.learn(total_timesteps=20000, progress_bar=True, tb_log_name="first_run")
+    model.learn(total_timesteps=200000, progress_bar=True, tb_log_name="first_run")
     model.save("TurbineEnvModel")
 
 def predict():

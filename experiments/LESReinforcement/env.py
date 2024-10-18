@@ -9,7 +9,6 @@ from gymnasium.utils import env_checker
 
 import numpy as np
 
-from architecture.pignn.deconv import DeConvNet
 from architecture.pignn.pignn import FlowPIGNN
 from experiments.graphs.graph_experiments import get_pignn_config
 from utils.extract_windspeed import WindspeedExtractor
@@ -21,7 +20,7 @@ device = torch.device("cpu")
 class TurbineEnv(gym.Env):
     metadata = {"render_modes": ["rgb_array"], "render_fps": 4}
 
-    def __init__(self, windspeedmap_model, turbine_locations, render_mode=None, map_size = 128, yaw_step=5, max_yaw=30):
+    def __init__(self, windspeedmap_model, turbine_locations, render_mode=None, map_size=128, yaw_step=5, max_yaw=30):
         self.turbine_locations = torch.tensor(turbine_locations)
         self.n_turbines = len(turbine_locations)
         self.map_size = map_size
@@ -171,21 +170,23 @@ def create_env(case=1):
     # Parallel environments
     # Make sure to actually use model that accepts an array of yaw angles instead of this, and load the pretrained weights.
     model_cfg = get_pignn_config()
-    actor_model = DeConvNet(1, [128, 256, 1])
-    flow_model = FlowPIGNN(**model_cfg, actor_model=actor_model)
+    map_size = (300, 300)
+    flow_model = FlowPIGNN(**model_cfg, output_size=map_size)
     flow_model.load_state_dict(torch.load("model_case01/pignn_best.pt"))
 
     turbines = "12_to_15" if case == 1 else "06_to_09" if case == 2 else "00_to_03"
     layout_file = f"../../data/Case_0{case}/HKN_{turbines}_layout_balanced.csv"
     turbine_locations = read_turbine_positions(layout_file)
 
-    env = TurbineEnv(flow_model, turbine_locations, render_mode="rgb_array")
+    env = TurbineEnv(flow_model, turbine_locations, render_mode="rgb_array", map_size=map_size[0])
     return env
+
 
 if __name__ == "__main__":
     # Make sure to actually use model that accepts an array of yaw angles instead of this, and load the pretrained weights.
     model_cfg = get_pignn_config()
-    model = FlowPIGNN(**model_cfg).to(device)
+    map_size = (300, 300)
+    model = FlowPIGNN(**model_cfg, output_size=map_size).to(device)
     model.load_state_dict(torch.load("model_case01/pignn_best.pt"))
 
     case = 1
@@ -193,7 +194,7 @@ if __name__ == "__main__":
     layout_file = f"../../data/Case_0{case}/HKN_{turbines}_layout_balanced.csv"
     turbine_locations = read_turbine_positions(layout_file)
 
-    env = TurbineEnv(model, turbine_locations, render_mode="rgb_array")
+    env = TurbineEnv(model, turbine_locations, render_mode="rgb_array", map_size=map_size[0])
 
     wind_direction = np.array([225])
     yaws = np.array([225] * 10)

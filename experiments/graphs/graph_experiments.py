@@ -13,7 +13,7 @@ from torch_geometric.loader import DataLoader
 from torch.utils.data import random_split
 
 from architecture.pignn.pignn import FlowPIGNN
-from architecture.pignn.deconv import FCDeConvNet, DeConvNet
+from architecture.pignn.deconv import FCDeConvNet
 from architecture.windspeedLSTM.windspeedLSTM import WindspeedLSTM, WindSpeedLSTMDeConv
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -269,7 +269,7 @@ def get_pignn_config():
     }
 
 
-def get_config(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, direct_lstm=False, num_epochs=200, early_stop_after=5):
+def get_config(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, output_size, direct_lstm=False, num_epochs=200, early_stop_after=10):
     return get_pignn_config(), {
         'case_nr': case_nr,
         'wake_steering': wake_steering,
@@ -280,11 +280,12 @@ def get_config(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_s
         'batch_size': batch_size,
         'seq_length': seq_length,
         'direct_lstm': direct_lstm,
+        'output_size': output_size,
     }
 
 
-def run(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, direct_lstm):
-    model_cfg, train_cfg = get_config(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, direct_lstm)
+def run(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, direct_lstm, output_size):
+    model_cfg, train_cfg = get_config(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, output_size, direct_lstm)
     is_direct_lstm = train_cfg['direct_lstm']
     is_temporal = seq_length > 1
     post_fix = "LuT2deg_internal" if train_cfg['wake_steering'] else "BL"
@@ -298,7 +299,7 @@ def run(case_nr, wake_steering, max_angle, use_graph, seq_length, batch_size, di
     dataset = GraphTemporalDataset(root=data_folder, seq_length=seq_length) if is_temporal else GraphDataset(root=data_folder)
     train_loader, val_loader, test_loader = create_data_loaders(dataset, train_cfg['batch_size'], seq_length)
 
-    graph_model = FlowPIGNN(**model_cfg).to(device) if train_cfg['use_graph'] else FCDeConvNet(232, 650, 656, 500).to(device)
+    graph_model = FlowPIGNN(**model_cfg, output_size=(output_size, output_size)).to(device) if train_cfg['use_graph'] else FCDeConvNet(232, 650, 656, 500).to(device)
 
     if is_temporal:
         temporal_model = WindSpeedLSTMDeConv(seq_length, [512, 256, 1]).to(device) if is_direct_lstm else WindspeedLSTM(seq_length, 128).to(device)
@@ -320,7 +321,7 @@ if __name__ == "__main__":
     # args = parser.parse_args()
     # run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size, args.direct_lstm)
 
-    run(1, True, 30, True, 1, 64, False)
+    run(1, True, 30, True, 1, 64, False, 300)
     # run(1, False, 90, True, 1, 64, False)
     # run(1, False, 360, True, 1, 64, False)
     # run(1, False, 360, False, 1, 64, False)
