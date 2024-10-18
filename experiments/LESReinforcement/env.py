@@ -161,6 +161,7 @@ class TurbineEnv(gym.Env):
         turbine_pixels = []
 
         self.windspeed_extractor(wind_speed_map, self._wind_direction, yaws, turbine_pixels)
+        wind_vec = 75 * wind_vec
 
         if self.render_mode == "rgb_array":
             plot_mean_absolute_speed(wind_speed_map, wind_vec, windmill_blades=turbine_pixels)
