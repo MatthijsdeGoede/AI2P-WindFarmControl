@@ -91,6 +91,17 @@ def add_imshow(fig, ax, umean_abs, color_bar=False):
     ax.set_ylabel('Y-axis')
     return axesImage
 
+def get_mean_absolute_speed_figure(umean_abs, wind_vec, layout_file=None, windmill_blades=None):
+    fig, ax = plt.subplots()
+
+    add_imshow(fig, ax, umean_abs)
+    add_quiver(ax, wind_vec, umean_abs.shape[0] / 2)
+    if windmill_blades:
+        add_blades(ax, windmill_blades)
+    else:
+        add_windmills(ax, layout_file, umean_abs.shape[0])
+    return fig
+
 def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file=None, windmill_blades=None):
     """"
     Plots the mean absolute wind speed over the given grid

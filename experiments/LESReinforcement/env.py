@@ -14,12 +14,12 @@ from architecture.pignn.pignn import FlowPIGNN
 from experiments.graphs.graph_experiments import get_pignn_config
 from utils.extract_windspeed import WindspeedExtractor
 from utils.preprocessing import read_turbine_positions, angle_to_vec, create_turbine_graph_tensors, correct_angles
-from utils.visualization import plot_mean_absolute_speed
+from utils.visualization import plot_mean_absolute_speed, get_mean_absolute_speed_figure
 
 device = torch.device("cpu")
 
 class TurbineEnv(gym.Env):
-    metadata = {"render_modes": ["rgb_array"], "render_fps": 4}
+    metadata = {"render_modes": ["rgb_array", "matplotlib"], "render_fps": 4}
 
     def __init__(self, windspeedmap_model, turbine_locations, render_mode=None, map_size=128, yaw_step=5, max_yaw=30):
         self.turbine_locations = torch.tensor(turbine_locations)
@@ -131,7 +131,7 @@ class TurbineEnv(gym.Env):
         return observation, np.sum(power), False, False, info
 
     def render(self):
-        if self.render_mode == "rgb_array":
+        if self.render_mode == "rgb_array" or self.render_mode == "matplotlib":
             return self._render_frame()
 
     def _render_frame(self):
@@ -162,7 +162,10 @@ class TurbineEnv(gym.Env):
 
         self.windspeed_extractor(wind_speed_map, self._wind_direction, yaws, turbine_pixels)
 
-        plot_mean_absolute_speed(wind_speed_map, wind_vec, windmill_blades=turbine_pixels)
+        if self.render_mode == "rgb_array":
+            plot_mean_absolute_speed(wind_speed_map, wind_vec, windmill_blades=turbine_pixels)
+        if self.render_mode == "matplotlib":
+            return get_mean_absolute_speed_figure(wind_speed_map, wind_vec, windmill_blades=turbine_pixels)
 
         return
 
@@ -179,7 +182,7 @@ def create_env(case=1):
     layout_file = f"../../data/Case_0{case}/HKN_{turbines}_layout_balanced.csv"
     turbine_locations = read_turbine_positions(layout_file)
 
-    env = TimeLimit(TurbineEnv(model, turbine_locations, render_mode="rgb_array", map_size=map_size[0]), max_episode_steps=max_episode_steps)
+    env = TimeLimit(TurbineEnv(model, turbine_locations, render_mode="matplotlib", map_size=map_size[0]), max_episode_steps=max_episode_steps)
     return env
 
 
