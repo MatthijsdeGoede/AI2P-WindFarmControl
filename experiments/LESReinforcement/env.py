@@ -167,8 +167,6 @@ class TurbineEnv(gym.Env):
             plot_mean_absolute_speed(wind_speed_map, wind_vec, windmill_blades=turbine_pixels)
         if self.render_mode == "matplotlib":
             return get_mean_absolute_speed_figure(wind_speed_map, wind_vec, windmill_blades=turbine_pixels)
-
-        model.train()
         return
 
 def create_env(case=1):
