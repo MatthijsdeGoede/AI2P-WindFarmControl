@@ -82,8 +82,7 @@ class FlowPIGNN(PowerPIGNN):
                  residual: bool = True,
                  input_norm: bool = True,
                  pign_mlp_params: dict = None,
-                 reg_mlp_params: dict = None,
-                 actor_model: nn.Module = None):
+                 reg_mlp_params: dict = None):
         super(FlowPIGNN, self).__init__(edge_in_dim, node_in_dim, global_in_dim, edge_hidden_dim, node_hidden_dim,
                                         global_hidden_dim, output_dim, n_pign_layers, residual, input_norm,
                                         pign_mlp_params, reg_mlp_params)

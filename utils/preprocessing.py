@@ -147,9 +147,14 @@ def angle_to_vec(wind_angle):
     return np.array([np.cos(angle_radians), np.sin(angle_radians)])
 
 
+def correct_angles(angles):
+    return (angles * -1 + 270) % 360
+
+
 def read_wind_angles(file):
     angles = np.genfromtxt(file, delimiter=",") * np.array([1, -1]) - np.array([0, 90])
     return np.mod(angles, [np.inf, 360])
+
 
 def get_wind_vec_at_time(wind_angles, timestep):
     return angle_to_vec(wind_angles[wind_angles[:, 0] <= timestep][-1, 1])

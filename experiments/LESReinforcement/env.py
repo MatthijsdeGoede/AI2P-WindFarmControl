@@ -13,7 +13,7 @@ from architecture.pignn.deconv import DeConvNet
 from architecture.pignn.pignn import FlowPIGNN
 from experiments.graphs.graph_experiments import get_pignn_config
 from utils.extract_windspeed import WindspeedExtractor
-from utils.preprocessing import read_turbine_positions, angle_to_vec, create_turbine_graph_tensors
+from utils.preprocessing import read_turbine_positions, angle_to_vec, create_turbine_graph_tensors, correct_angles
 from utils.visualization import plot_mean_absolute_speed
 
 device = torch.device("cpu")
@@ -74,13 +74,13 @@ class TurbineEnv(gym.Env):
 
         # If wind direction is given in options, use that
         if "wind_direction" in options:
-            self._wind_direction = options["wind_direction"]
+            self._wind_direction = correct_angles(options["wind_direction"])
         else:
             # Else generate a random direction (TODO: only use values actually observed in training the wind speed map)
             self._wind_direction = self.np_random.integers(0, 360, size=(1,), dtype=int)
 
         if "yaws" in options:
-            self._yaws = self._yaw_to_action(options["yaws"], self._wind_direction[0])
+            self._yaws = self._yaw_to_action(correct_angles(options["yaws"]), self._wind_direction[0])
         else:
             # TODO: only use values actually observed in training the wind speed map
             self._yaws = self.np_random.integers(0, 2 * self._n_yaw_steps - 1, size=self.n_turbines)

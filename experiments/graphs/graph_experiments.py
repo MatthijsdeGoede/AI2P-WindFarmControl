@@ -320,7 +320,7 @@ if __name__ == "__main__":
     # args = parser.parse_args()
     # run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size, args.direct_lstm)
 
-    run(1, False, 30, True, 1, 64, False)
+    run(1, True, 30, True, 1, 64, False)
     # run(1, False, 90, True, 1, 64, False)
     # run(1, False, 360, True, 1, 64, False)
     # run(1, False, 360, False, 1, 64, False)
