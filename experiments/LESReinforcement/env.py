@@ -32,7 +32,7 @@ class TurbineEnv(gym.Env):
         # Extract wind speeds from the map
         self.windspeed_extractor = WindspeedExtractor(turbine_locations, map_size)
 
-        self._n_yaw_steps = max_yaw // yaw_step
+        self._n_yaw_steps = (max_yaw // yaw_step) + 1
 
         # Define some variables to keep track off
         self._wind_direction = [0]
@@ -42,16 +42,16 @@ class TurbineEnv(gym.Env):
         self.observation_space = spaces.Dict(
             {
                 "wind_direction": gym.spaces.Box(0, 360, dtype=int),
-                "yaws": spaces.MultiDiscrete([2 * self._n_yaw_steps + 1] * self.n_turbines)
+                "yaws": spaces.MultiDiscrete([2 * self._n_yaw_steps - 1] * self.n_turbines)
             }
         )
 
         # Actions the agents can take, it can select the new yaw angles for the turbines
-        self.action_space = spaces.MultiDiscrete([2 * self._n_yaw_steps + 1] * self.n_turbines)
+        self.action_space = spaces.MultiDiscrete([2 * self._n_yaw_steps - 1] * self.n_turbines)
 
         # Convert action to an actual yaw angle
-        self._action_to_yaw = lambda action : (action - self._n_yaw_steps) * yaw_step
-        # self._yaw_to_action = lambda yaw : yaw // yaw_step
+        self._action_to_yaw = lambda action, wind : (action - self._n_yaw_steps) * yaw_step + wind
+        self._yaw_to_action = lambda yaw, wind    : (yaw - wind) // yaw_step + self._n_yaw_steps
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
@@ -80,10 +80,10 @@ class TurbineEnv(gym.Env):
             self._wind_direction = self.np_random.integers(0, 360, size=(1,), dtype=int)
 
         if "yaws" in options:
-            self._yaws = options["yaws"]
+            self._yaws = self._yaw_to_action(options["yaws"], self._wind_direction[0])
         else:
             # TODO: only use values actually observed in training the wind speed map
-            self._yaws = self.np_random.integers(0, 2 * self._n_yaw_steps + 1, size=self.n_turbines)
+            self._yaws = self.np_random.integers(0, 2 * self._n_yaw_steps - 1, size=self.n_turbines)
 
         observation = self._get_obs()
         info = self._get_info()
@@ -92,7 +92,7 @@ class TurbineEnv(gym.Env):
 
     def step(self, action):
         # Convert actions to actual yaw values
-        yaws = self._action_to_yaw(action)
+        yaws = self._action_to_yaw(action, self._wind_direction[0])
 
         x = torch.tensor(yaws).reshape(-1, 1).float()
         pos = self.turbine_locations
@@ -116,7 +116,6 @@ class TurbineEnv(gym.Env):
 
         windspeeds = self.windspeed_extractor(wind_speed_map, self._wind_direction, yaws)
 
-        # TODO convert windspeeds to a power estimate
         diff_yaw = np.deg2rad(yaws - self._wind_direction[0])
         power = np.sin(diff_yaw) * (windspeeds ** 3)
 
@@ -136,7 +135,7 @@ class TurbineEnv(gym.Env):
     def _render_frame(self):
         # Render a wind speed map with current yaws
         # Convert actions to actual yaw values
-        yaws = self._action_to_yaw(self._yaws)
+        yaws = self._action_to_yaw(self._yaws, self._wind_direction[0])
 
         x = torch.tensor(yaws).reshape(-1, 1).float()
         pos = self.turbine_locations
