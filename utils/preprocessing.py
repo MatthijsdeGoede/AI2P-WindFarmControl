@@ -148,9 +148,8 @@ def angle_to_vec(wind_angle):
 
 
 def read_wind_angles(file):
-    angles = np.genfromtxt(file, delimiter=",") * np.array([0, -1]) - np.array([0, 90])
-    max_time = np.max(angles, axis=0)[0] + 1
-    return np.mod(angles, [max_time, 360])
+    angles = np.genfromtxt(file, delimiter=",") * np.array([1, -1]) - np.array([0, 90])
+    return np.mod(angles, [np.inf, 360])
 
 def get_wind_vec_at_time(wind_angles, timestep):
     return angle_to_vec(wind_angles[wind_angles[:, 0] <= timestep][-1, 1])
