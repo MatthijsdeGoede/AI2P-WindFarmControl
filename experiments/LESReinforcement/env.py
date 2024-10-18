@@ -117,7 +117,10 @@ class TurbineEnv(gym.Env):
         windspeeds = self.windspeed_extractor(wind_speed_map, self._wind_direction, yaws)
 
         diff_yaw = np.deg2rad(yaws - self._wind_direction[0])
-        power = np.sin(diff_yaw) * (windspeeds ** 3)
+        Pp = 2
+        Cp = np.cos(diff_yaw) ** Pp  # TODO: check Pp
+        # TODO: check if cos or sin
+        power = (windspeeds ** 3) * Cp
 
         self._yaws = action
 
