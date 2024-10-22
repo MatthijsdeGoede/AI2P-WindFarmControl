@@ -77,7 +77,6 @@ class CaseDataset(Dataset):
         x_coords = flat_index % 300
         y_coords = flat_index // 300
         self.coords = torch.stack([x_coords, y_coords]).T
-        self.coords = (self.coords - 149.5) / 149.5 #normalizing to -1, 1
 
         self.df_turbines = pd.read_csv(turbine_csv, index_col=0)
         self.df_wind = pd.read_csv(wind_csv, index_col=0)
@@ -91,7 +90,7 @@ class CaseDataset(Dataset):
 
     def get_turbine_data(self, time):
         df = self.df_turbines
-        time_instance = df[df['time'] == time][['speed', 'yaw_sin', "yaw_cos"]]
+        time_instance = df[df['time'] == time][['yaw_sin', "yaw_cos"]]
         return torch.from_numpy(time_instance.to_numpy().flatten()).unsqueeze(0)    
 
     def get_wind_data(self, time):
