@@ -17,28 +17,8 @@ class DeConvNet(nn.Module):
     def forward(self, x):
         # Use interpolation to reach the exact desired output size
         output_tensor = self.de_conv(x.reshape(-1, 1, 10, 50))
-        return nn.functional.interpolate(output_tensor, size=self.output_size, mode='bilinear', align_corners=False).reshape(-1, 50, 128, 128)
+        return nn.functional.interpolate(output_tensor, size=self.output_size, mode='bilinear', align_corners=False).flatten(start_dim=1)#.reshape(-1, 50, 128, 128)
 
-    # def forward(self, x):
-    #     # Initialize a list to store the outputs for each timestep
-    #     outputs = []
-    #     for t in range(x.shape[1]):
-    #         timestep_data = x[:, t, :, :]
-    #         timestep_data = timestep_data.reshape(-1, 1, 10, 50)  # Shape: (batch_size, 1, 10, 50)
-    #         output_tensor = self.de_conv(timestep_data)
-    #
-    #         # Interpolate to the desired output size
-    #         output_tensor = nn.functional.interpolate(
-    #             output_tensor,
-    #             size=self.output_size,
-    #             mode='bilinear',
-    #             align_corners=False
-    #         )
-    #         outputs.append(output_tensor)
-    #
-    #     final_output = stack(outputs, dim=1).reshape(-1, 50, 10, 50)
-    #
-    #     return final_output
 
 class FCDeConvNet(nn.Module):
     def __init__(self, input_size, hidden1_size, hidden2_size, output_size):
