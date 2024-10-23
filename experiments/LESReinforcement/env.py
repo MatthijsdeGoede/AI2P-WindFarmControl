@@ -53,6 +53,8 @@ class TurbineEnv(gym.Env):
         self._action_to_yaw = lambda action, wind : (action - self._n_yaw_steps) * yaw_step + wind
         self._yaw_to_action = lambda yaw, wind    : (yaw - wind) // yaw_step + self._n_yaw_steps
 
+        self._last_wind_speed = None
+
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
 
@@ -64,7 +66,9 @@ class TurbineEnv(gym.Env):
         }
 
     def _get_info(self):
-        return {}
+        return {
+            "windspeed": self._last_wind_speed
+        }
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         super().reset(seed=seed)
@@ -113,13 +117,13 @@ class TurbineEnv(gym.Env):
             wind_speed_map = self.model(mini_batch, nf, edge_attr, glob).reshape(self.map_size, self.map_size)
 
 
-        windspeeds = self.windspeed_extractor(wind_speed_map, self._wind_direction, yaws)
+        self._last_wind_speed = self.windspeed_extractor(wind_speed_map, self._wind_direction, yaws)
 
         diff_yaw = np.deg2rad(yaws - self._wind_direction[0])
         Pp = 2
         Cp = np.cos(diff_yaw) ** Pp  # TODO: check Pp
         # TODO: check if cos or sin
-        power = (windspeeds ** 3) * Cp
+        power = (self._last_wind_speed ** 3) * Cp
 
         self._yaws = action
 
@@ -169,10 +173,9 @@ class TurbineEnv(gym.Env):
             return get_mean_absolute_speed_figure(wind_speed_map, wind_vec, windmill_blades=turbine_pixels)
         return
 
-def create_env(case=1):
+def create_env(case=1, max_episode_steps=100, render_mode="matplotlib"):
     # Parallel environments
     # Make sure to actually use model that accepts an array of yaw angles instead of this, and load the pretrained weights.
-    max_episode_steps = 100
     model_cfg = get_pignn_config()
     map_size = (300, 300)
     model = FlowPIGNN(**model_cfg, output_size=map_size)
@@ -182,7 +185,7 @@ def create_env(case=1):
     layout_file = f"../../data/Case_0{case}/HKN_{turbines}_layout_balanced.csv"
     turbine_locations = read_turbine_positions(layout_file)
 
-    env = TimeLimit(TurbineEnv(model, turbine_locations, render_mode="matplotlib", map_size=map_size[0]), max_episode_steps=max_episode_steps)
+    env = TimeLimit(TurbineEnv(model, turbine_locations, render_mode=render_mode, map_size=map_size[0]), max_episode_steps=max_episode_steps)
     return env
 
 
@@ -213,4 +216,4 @@ if __name__ == "__main__":
     env.render()
 
     print("Starting check", flush=True)
-    env_checker.check_env(env)
+    env_checker.check_env(env.unwrapped)
