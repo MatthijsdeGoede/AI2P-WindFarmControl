@@ -43,7 +43,7 @@ class WindspeedExtractor:
             if location_pixels is not None:
                 location_pixels.append(rotated)
 
-            wind_speeds_at_turbine[i] = np.array([windspeedmap[index[0], index[1]] for index in rotated])
+            wind_speeds_at_turbine[i] = np.array([windspeedmap[index[1], index[0]] for index in rotated])
 
 
         means = np.mean(wind_speeds_at_turbine, axis=1)
