@@ -26,7 +26,7 @@ class ComparisonCallback(BaseCallback):
         self.eval_env = eval_env
 
     def _on_step(self):
-        seed = np.random.random_integers(1, 1000)
+        seed = np.random.randint(10000)
         self.eval_env.reset(seed=seed)
         greedy = np.ones(10) * 7 # Actions is a discrete space, where 7 is the middle and thus 0 degrees yaw
         _, rewards_greedy, _, _, info_greedy = self.eval_env.step(greedy)
