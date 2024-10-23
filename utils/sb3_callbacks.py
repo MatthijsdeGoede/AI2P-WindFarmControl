@@ -36,9 +36,19 @@ class ComparisonCallback(BaseCallback):
         obs, info = self.eval_env.reset(seed=seed)
         action, states = self.model.predict(obs)
         _, rewards_model, _, _, info_model = self.eval_env.step(action)
+        self.eval_env.render()
+
+        self.logger.record("evaluation/greedy_windspeeds", np.mean(info_greedy['windspeed']))
+        self.logger.record("evaluation/model_windspeeds", np.mean(info_model['windspeed']))
+        self.logger.record("evaluation/min_greedy_windspeeds", np.min(info_greedy['windspeed']))
+        self.logger.record("evaluation/min_model_windspeeds", np.min(info_model['windspeed']))
+        self.logger.record("evaluation/max_greedy_windspeeds", np.max(info_greedy['windspeed']))
+        self.logger.record("evaluation/max_model_windspeeds", np.max(info_model['windspeed']))
+
+        self.logger.record("evaluation/greedy_reward",rewards_greedy)
+        self.logger.record("evaluation/model_reward", rewards_model)
         print(f"rewards_greedy: {rewards_greedy}, rewards_model: {rewards_model}")
         print(f"info_greedy: {info_greedy['windspeed']}, info_model: {info_model['windspeed']}")
-        self.eval_env.render()
         return True
 
 
