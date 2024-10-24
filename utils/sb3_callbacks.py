@@ -30,13 +30,19 @@ class ComparisonCallback(BaseCallback):
         self.eval_env.reset(seed=seed)
         greedy = np.ones(10) * 7 # Actions is a discrete space, where 7 is the middle and thus 0 degrees yaw
         _, rewards_greedy, _, _, info_greedy = self.eval_env.step(greedy)
-        self.eval_env.render()
+        fig_greedy = self.eval_env.render()
+        if fig_greedy:
+            self.logger.record("evaluation/greedy", Figure(fig_greedy, close=True), exclude=("stdout", "log", "json", "csv"))
+            plt.close()
 
         # Model control
         obs, info = self.eval_env.reset(seed=seed)
         action, states = self.model.predict(obs)
         _, rewards_model, _, _, info_model = self.eval_env.step(action)
-        self.eval_env.render()
+        fig_model = self.eval_env.render()
+        if fig_model:
+            self.logger.record("trajectory/model", Figure(fig_model, close=True), exclude=("stdout", "log", "json", "csv"))
+            plt.close()
 
         self.logger.record("evaluation/greedy_windspeeds", np.mean(info_greedy['windspeed']))
         self.logger.record("evaluation/model_windspeeds", np.mean(info_model['windspeed']))
