@@ -7,6 +7,7 @@ import numpy as np
 import torch.nn as nn
 
 from datetime import datetime
+
 from torch.optim import Adam
 from torch_geometric.data import Dataset, Data
 from torch_geometric.loader import DataLoader
@@ -17,25 +18,33 @@ from architecture.pignn.deconv import FCDeConvNet, DeConvNet
 from architecture.windspeedLSTM.windspeedLSTM import WindspeedLSTM, WindSpeedLSTMDeConv
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+generator = torch.Generator()
+generator.manual_seed(42)
 
 
 class GraphDataset(Dataset):
-    def __init__(self, root, transform=None, pre_transform=None):
+    def __init__(self, root, preload=True, transform=None, pre_transform=None):
         super(GraphDataset, self).__init__(root, transform, pre_transform)
+        self.num_samples = len([name for name in os.listdir(self.root) if name != "README.md"])
+        self.data = None
+        self.graph_paths = None
         self.root = root
-        self.graph_paths = self.load_graph_paths()
+        self.preload = preload
+        self.load_graph_paths()
 
     def load_graph_paths(self):
-        graph_paths = [f"{self.root}/graph_{i}.pt" for i in range(30005, 42000 + 1, 5)]
-        return graph_paths
+        if self.preload:
+            self.data = [torch.load(f"{self.root}/graph_{i}.pt") for i in range(30005, 42000 + 1, 5)]
+        else:
+            self.graph_paths = [f"{self.root}/graph_{i}.pt" for i in range(30005, 42000 + 1, 5)]
 
     def len(self):
-        return len(self.graph_paths)
+        return self.num_samples
 
     def get(self, idx):
-        graph_path = self.graph_paths[idx]
-        graph_data = torch.load(graph_path)
-        return graph_data
+        if self.preload:
+            return self.data[idx]
+        return torch.load(self.graph_paths[idx])
 
 
 class GraphTemporalDataset(Dataset):
@@ -86,7 +95,7 @@ def create_data_loaders(dataset, batch_size, seq_length):
     val_size = int(0.1 * total_size)
     test_size = total_size - train_size - val_size
     collate = custom_collate_fn if seq_length > 1 else None
-    train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
+    train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size], generator=generator)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate, pin_memory=True)
@@ -139,6 +148,9 @@ def train(model, train_params, train_loader, val_loader, output_folder):
     criterion = nn.MSELoss()
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50)
 
+    train_loss_list = []
+    val_loss_list = []
+
     num_epochs = train_params['num_epochs']
     best_loss = float('inf')
     epochs_no_improve = 0
@@ -148,13 +160,18 @@ def train(model, train_params, train_loader, val_loader, output_folder):
         train_loss = train_epoch(train_loader, model, criterion, optimizer, scheduler)
         val_loss = eval_epoch(val_loader, model, criterion)
         learning_rate = optimizer.param_groups[0]['lr']
-        print(
-            f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {train_loss}, validation loss: {val_loss}")
+        train_loss_list.append(train_loss)
+        val_loss_list.append(val_loss)
+
+        print(f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {train_loss}, validation loss: {val_loss}")
 
         # Save model pointer
         torch.save(model.state_dict(), f"{output_folder}/pignn_{epoch}.pt")
 
         # Check early stopping criterion
+        if epoch == num_epochs:
+            np.save(f"{output_folder}/train_loss", train_loss_list)
+            np.save(f"{output_folder}/val_loss", val_loss_list)
         if val_loss < best_loss:
             best_loss = val_loss
             epochs_no_improve = 0
@@ -163,6 +180,8 @@ def train(model, train_params, train_loader, val_loader, output_folder):
             epochs_no_improve += 1
 
         if epochs_no_improve >= train_params['early_stop_after']:
+            np.save(f"{output_folder}/train_loss", train_loss_list)
+            np.save(f"{output_folder}/val_loss", val_loss_list)
             print(f'Early stopping at epoch {epoch}')
             break
 
@@ -220,6 +239,9 @@ def train_temporal(graph_model, temporal_model, train_params, train_loader, val_
     criterion = nn.MSELoss().to(device)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50)
 
+    train_loss_list = []
+    val_loss_list = []
+
     num_epochs = train_params['num_epochs']
     best_loss = float('inf')
     epochs_no_improve = 0
@@ -230,12 +252,17 @@ def train_temporal(graph_model, temporal_model, train_params, train_loader, val_
                                           embedding_size, output_size)
         val_loss = eval_temporal_epoch(val_loader, graph_model, temporal_model, criterion, embedding_size, output_size)
         learning_rate = optimizer.param_groups[0]['lr']
-        print(
-            f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {train_loss}, validation loss: {val_loss}")
+        train_loss_list.append(train_loss)
+        val_loss_list.append(val_loss)
+        print(f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {train_loss}, validation loss: {val_loss}")
 
         # Save model pointers
         torch.save(graph_model.state_dict(), f"{output_folder}/pignn_{epoch}.pt")
         torch.save(temporal_model.state_dict(), f"{output_folder}/unet_lstm_{epoch}.pt")
+
+        if epoch == num_epochs:
+            np.save(f"{output_folder}/train_loss", train_loss_list)
+            np.save(f"{output_folder}/val_loss", val_loss_list)
 
         # Check early stopping criterion
         if val_loss < best_loss:
@@ -247,6 +274,8 @@ def train_temporal(graph_model, temporal_model, train_params, train_loader, val_
             epochs_no_improve += 1
 
         if epochs_no_improve >= train_params['early_stop_after']:
+            np.save(f"{output_folder}/train_loss", train_loss_list)
+            np.save(f"{output_folder}/val_loss", val_loss_list)
             print(f'Early stopping at epoch {epoch}')
             break
 
@@ -320,7 +349,8 @@ def get_config(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq
     }
 
 
-def run(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length=1, batch_size=64, direct_lstm=False, output_size=300, use_all_data=False):
+def run(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length=1, batch_size=64, direct_lstm=False,
+        output_size=300, use_all_data=False):
     model_cfg, train_cfg = get_config(case_nr=case_nr, wake_steering=wake_steering, max_angle=max_angle,
                                       use_graph=use_graph, seq_length=seq_length, batch_size=batch_size,
                                       output_size=output_size, direct_lstm=direct_lstm, use_all_data=use_all_data)
