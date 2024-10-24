@@ -17,7 +17,7 @@ class DeConvNet(nn.Module):
     def forward(self, x):
         # Use interpolation to reach the exact desired output size
         output_tensor = self.de_conv(x.reshape(-1, 1, 10, 50))
-        return nn.functional.interpolate(output_tensor, size=self.output_size, mode='bilinear', align_corners=False).flatten(start_dim=1)#.reshape(-1, 50, 128, 128)
+        return nn.functional.interpolate(output_tensor, size=self.output_size, mode='bilinear', align_corners=False).flatten(start_dim=1)
 
 
 class FCDeConvNet(nn.Module):

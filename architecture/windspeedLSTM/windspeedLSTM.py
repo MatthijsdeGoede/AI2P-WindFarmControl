@@ -30,12 +30,12 @@ class WindspeedLSTMHelper(nn.Module):
 
 
 class WindSpeedLSTMDeConv(nn.Module):
-    def __init__(self, seq_length, de_conv_dims):
+    def __init__(self, seq_length, de_conv_dims, output_size):
         super(WindSpeedLSTMDeConv, self).__init__()
         self.seq_length = seq_length
         self.flatten = nn.Flatten(start_dim=2)
         self.lstm = nn.LSTM(500, 500, dtype=torch.float32)
-        self.de_conv = DeConvNet(1, de_conv_dims)
+        self.de_conv = DeConvNet(1, de_conv_dims, output_size=output_size)
 
     def forward(self, x):
         x = self.flatten(x)

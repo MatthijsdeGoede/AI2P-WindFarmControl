@@ -1,7 +1,7 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-from utils.extract_windspeed import WindspeedExtractor
+from utils.extract_windspeed import WindSpeedExtractor
 from utils.preprocessing import (read_wind_angles, read_turbine_positions, get_wind_vec_at_time,
                                  create_turbine_nx_graph,
                                  read_wind_speed_scalars, resize_windspeed, read_measurement)
@@ -78,7 +78,7 @@ def test_extract_windspeed():
     scaled_LuT2deg = resize_windspeed(umean_abs_LuT2deg, (scale, scale))
     yaw_angles_LuT2deg = read_measurement(f"{turbine_data_dir}/30000_LuT2deg_internal", "nacYaw")[:, timestep // 5] * -1 + 270
 
-    extractor = WindspeedExtractor(turbine_pos,scale)
+    extractor = WindSpeedExtractor(turbine_pos, scale)
 
     wind_angles = read_wind_angles(f"../data/Case_0{case}/HKN_{turbines}_dir.csv")
     wind_vec = 100 * get_wind_vec_at_time(wind_angles, timestep)

@@ -83,14 +83,13 @@ class FlowPIGNN(PowerPIGNN):
                  input_norm: bool = True,
                  pign_mlp_params: dict = None,
                  reg_mlp_params: dict = None,
-                 output_size: tuple = (128, 128)):
+                 actor_model: nn.Module = None):
         super(FlowPIGNN, self).__init__(edge_in_dim, node_in_dim, global_in_dim, edge_hidden_dim, node_hidden_dim,
                                         global_hidden_dim, output_dim, n_pign_layers, residual, input_norm,
                                         pign_mlp_params, reg_mlp_params)
         self.num_nodes = num_nodes
-
         # Actor model on the node embeddings
-        self.actor_model = DeConvNet(1, [64, 128, 256, 1], output_size=output_size)
+        self.actor_model = actor_model
 
     # Override
     def forward(self, data, nf, ef, gf):
