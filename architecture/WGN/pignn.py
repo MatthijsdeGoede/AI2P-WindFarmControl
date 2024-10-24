@@ -1,8 +1,8 @@
 import torch.nn as nn
 
-from WGN.deconv import DeConvNet
-from WGN.mlp import MLP
-from WGN.pign import PIGN
+from architecture.WGN.deconv import DeConvNet
+from architecture.WGN.mlp import MLP
+from architecture.WGN.pign import PIGN
 
 
 class PowerPIGNN(nn.Module):
