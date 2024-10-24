@@ -15,6 +15,7 @@ from architecture.pignn.pignn import FlowPIGNN
 from experiments.graphs.graph_experiments import get_pignn_config
 from utils.extract_windspeed import WindSpeedExtractor
 from utils.preprocessing import read_turbine_positions, angle_to_vec, create_turbine_graph_tensors, correct_angles
+from utils.rl_utils import wind_speed_to_power
 from utils.visualization import plot_mean_absolute_speed, get_mean_absolute_speed_figure
 
 device = torch.device("cpu")
@@ -23,7 +24,7 @@ device = torch.device("cpu")
 class TurbineEnv(gym.Env):
     metadata = {"render_modes": ["rgb_array", "matplotlib"], "render_fps": 4}
 
-    def __init__(self, wind_speed_map_model, turbine_locations, render_mode=None, map_size=128, yaw_step=5, max_yaw=30):
+    def __init__(self, wind_speed_map_model, turbine_locations, render_mode=None, map_size=300, yaw_step=5, max_yaw=30):
         self.turbine_locations = torch.tensor(turbine_locations)
         self.n_turbines = len(turbine_locations)
         self.map_size = map_size
@@ -79,12 +80,13 @@ class TurbineEnv(gym.Env):
 
         # If wind direction is given in options, use that
         if "wind_direction" in options:
-            self._wind_direction = correct_angles(options["wind_direction"])
-        else:
+            self._wind_direction = options["wind_direction"]
+        else: # Else choose a wind direction that is in the data range
             self._wind_direction = correct_angles(self.np_random.integers(220, 261, size=(1,), dtype=int))
 
+        # Similarly for yaws
         if "yaws" in options:
-            self._yaws = self._yaw_to_action(correct_angles(options["yaws"]), self._wind_direction[0])
+            self._yaws = self._yaw_to_action(options["yaws"], self._wind_direction[0])
         else:
             self._yaws = self.np_random.integers(0, 2 * self._n_yaw_steps - 1, size=self.n_turbines)
 
@@ -92,6 +94,7 @@ class TurbineEnv(gym.Env):
         info = self._get_info()
 
         return observation, info
+
 
     def step(self, action):
         # Convert actions to actual yaw values
@@ -103,17 +106,14 @@ class TurbineEnv(gym.Env):
         self._last_wind_speed = self.wind_speed_extractor(wind_speed_map, self._wind_direction, yaws)
 
         # Convert the extracted wind speeds at the turbines to power
-        diff_yaw = np.deg2rad(yaws - self._wind_direction[0])
-        Pp = 2
-        Cp = np.cos(diff_yaw) ** Pp
-        power = (self._last_wind_speed ** 3) * Cp
+        power = wind_speed_to_power(yaws, self._wind_direction[0], self._last_wind_speed)
 
+        # Take a step in the environment
         self._yaws = action
-
         observation = self._get_obs()
         info = self._get_info()
 
-        # return tuple in form observation, reward, terminated, truncated, info.
+        # Return tuple in form observation, reward, terminated, truncated, info.
         # Power is the reward, and as of now, the environment does not terminate.
         return observation, np.sum(power), False, False, info
 
@@ -158,11 +158,9 @@ class TurbineEnv(gym.Env):
         return
 
 
-def create_env(case=1, max_episode_steps=100, render_mode="matplotlib"):
-    # Parallel environments
+def create_env(case=1, max_episode_steps=100, render_mode="matplotlib", map_size=(300, 300)):
     # Make sure to actually use model that accepts an array of yaw angles instead of this, and load the pretrained weights.
     model_cfg = get_pignn_config()
-    map_size = (300, 300)
     actor_model = DeConvNet(1, [64, 128, 256, 1], output_size=(map_size, map_size))
     model = FlowPIGNN(**model_cfg, actor_model=actor_model)
     model.load_state_dict(torch.load("model_case01/pignn_best.pt"))
@@ -171,8 +169,7 @@ def create_env(case=1, max_episode_steps=100, render_mode="matplotlib"):
     layout_file = f"../../data/Case_0{case}/HKN_{turbines}_layout_balanced.csv"
     turbine_locations = read_turbine_positions(layout_file)
 
-    env = TimeLimit(TurbineEnv(model, turbine_locations, render_mode=render_mode, map_size=map_size[0]),
-                    max_episode_steps=max_episode_steps)
+    env = TimeLimit(TurbineEnv(model, turbine_locations, render_mode=render_mode, map_size=map_size[0]), max_episode_steps=max_episode_steps)
     return env
 
 
@@ -182,8 +179,8 @@ if __name__ == "__main__":
     wind_direction = np.array([225])
     yaws = np.array([225] * 10)
     options = {
-        "wind_direction": wind_direction,
-        "yaws": yaws
+        "wind_direction": correct_angles(wind_direction),
+        "yaws": correct_angles(yaws)
     }
 
     env.reset(options=options)

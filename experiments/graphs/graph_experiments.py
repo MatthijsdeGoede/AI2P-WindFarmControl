@@ -333,7 +333,7 @@ def get_dataset_dirs(case_nr, wake_steering, max_angle, use_all_data):
 
 
 def get_config(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length=1, batch_size=64,
-               output_size=300, direct_lstm=False, num_epochs=200, early_stop_after=10, use_all_data=False):
+               output_size=300, direct_lstm=False, num_epochs=300, early_stop_after=10, use_all_data=False):
     return get_pignn_config(), {
         'case_nr': case_nr,
         'wake_steering': wake_steering,
@@ -376,8 +376,7 @@ def run(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length
         temporal_model = WindSpeedLSTMDeConv(seq_length, [512, 256, 1], output_size).to(
             device) if is_direct_lstm else WindspeedLSTM(seq_length).to(device)
         embedding_size = (50, 10) if is_direct_lstm else out_size
-        train_temporal(graph_model, temporal_model, train_cfg, train_loader, val_loader, output_folder, embedding_size,
-                       out_size)
+        train_temporal(graph_model, temporal_model, train_cfg, train_loader, val_loader, output_folder, embedding_size, out_size)
     else:
         train(graph_model, train_cfg, train_loader, val_loader, output_folder)
 
