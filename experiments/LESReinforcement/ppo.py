@@ -3,7 +3,7 @@ from stable_baselines3 import PPO
 
 from experiments.LESReinforcement.env import create_env
 from utils.sb3_callbacks import FigureRecorderCallback
-from stable_baselines3.common.callbacks import ProgressBarCallback, EveryNTimesteps, CheckpointCallback
+from stable_baselines3.common.callbacks import EveryNTimesteps, CheckpointCallback
 
 device = torch.device("cpu")
 
@@ -17,11 +17,11 @@ def train():
 
     model = PPO("MultiInputPolicy", env, verbose=1, device=device, tensorboard_log="./turbine_env/")
     model.learn(total_timesteps=200000, progress_bar=True, tb_log_name="PPO", callback=[checkpoint_callback, ntimestep_callback])
-    model.save("TurbineEnvModel")
+    model.save("PPOTurbineEnvModel")
 
 def predict():
     env = create_env()
-    model = PPO.load("TurbineEnvModel")
+    model = PPO.load("PPOTurbineEnvModel")
 
     for i in range(10):
         obs, info = env.reset()

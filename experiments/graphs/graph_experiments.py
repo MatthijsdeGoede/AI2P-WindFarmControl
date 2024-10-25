@@ -120,6 +120,7 @@ def compute_loss(batch, criterion, model):
 
 def train_epoch(train_loader, model, criterion, optimizer, scheduler):
     train_losses = []
+    model.train()
     for i, batch in enumerate(train_loader):
         batch = batch.to(device)
         loss = compute_loss(batch, criterion, model)
@@ -208,6 +209,8 @@ def process_temporal_batch(batch, graph_model, temporal_model, criterion, embedd
 def train_temporal_epoch(train_loader, graph_model, temporal_model, criterion, optimizer, scheduler, embedding_size,
                          output_size):
     train_losses = []
+    graph_model.train()
+    temporal_model.train()
     for i, batch in enumerate(train_loader):
         print(f"processing batch {i + 1}/{len(train_loader)}")
         loss = process_temporal_batch(batch, graph_model, temporal_model, criterion, embedding_size, output_size)
@@ -394,16 +397,14 @@ if __name__ == "__main__":
     # parser.add_argument('--direct_lstm', action='store_true', help='Feed the PIGNN output directly to the LSTM (default: False)')
     # parser.add_argument('--use_all_data', action='store_true', help='Use all available training data (default: False)')
     # args = parser.parse_args()
-    # run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size, args.direct_lstm, args.use_all_data)
+    #
+    # run(case_nr=args.case_nr, wake_steering=args.wake_steering, max_angle=args.max_angle, use_graph=args.use_graph,
+    # seq_length=args.seq_length, batch_size=args.batch_size, direct_lstm=args.direct_lstm, use_all_data=args.use_all_data)
 
-    # run(max_angle=360, seq_length=1, use_graph=False, output_size=128)
-    run(max_angle=30, seq_length=1, output_size=128, use_all_data=True)
+    # run(case_nr=1, wake_steering=False, max_angle=30, seq_length=1, output_size=128)
+    # run(case_nr=1, wake_steering=False, max_angle=90, seq_length=1, output_size=128)
+    # run(case_nr=1, wake_steering=False, max_angle=360, seq_length=1, output_size=128)
 
-    # run(1, False, 90, True, 1, 64, False)
-    # run(1, False, 360, True, 1, 64, False)
-    # run(1, False, 360, False, 1, 64, False)
-
-    # run(1, True, 30, True, 1, 64, False)
-    # run(1, True, 90, True, 1, 64, False)
-    # run(1, True, 360, True, 1, 64, False)
-    # run(1, True, 360, False, 1, 64, False)
+    run(case_nr=1, wake_steering=True, max_angle=30, seq_length=1, output_size=128)
+    # run(case_nr=1, wake_steering=True, max_angle=90, seq_length=1, output_size=128)
+    # run(case_nr=1, wake_steering=True, max_angle=360, seq_length=1, output_size=128)

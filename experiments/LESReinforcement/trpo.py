@@ -19,6 +19,7 @@ def train():
 
     model = TRPO("MultiInputPolicy", env, verbose=1, device=device, tensorboard_log="./turbine_env/")
     model.learn(total_timesteps=200000, progress_bar=True, tb_log_name="TRPO", callback=[checkpoint_callback, ntimestep_callback])
+    model.save("TRPOTurbineEnvModel")
 
 def predict():
     env = create_env()
