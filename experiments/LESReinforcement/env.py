@@ -160,8 +160,8 @@ class TurbineEnv(gym.Env):
 def create_env(case=1, max_episode_steps=100, render_mode="matplotlib", map_size=(300, 300)):
     # Make sure to actually use model that accepts an array of yaw angles instead of this, and load the pretrained weights.
     model_cfg = get_pignn_config()
-    actor_model = DeConvNet(1, [64, 128, 256, 1], output_size=map_size[0])
-    model = FlowPIGNN(**model_cfg, actor_model=actor_model)
+    deconv_model = DeConvNet(1, [64, 128, 256, 1], output_size=map_size[0])
+    model = FlowPIGNN(**model_cfg, deconv_model=deconv_model)
     model.load_state_dict(torch.load("model_case01/pignn_best.pt"))
 
     turbines = "12_to_15" if case == 1 else "06_to_09" if case == 2 else "00_to_03"

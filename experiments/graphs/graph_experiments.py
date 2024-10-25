@@ -333,7 +333,7 @@ def get_dataset_dirs(case_nr, wake_steering, max_angle, use_all_data):
 
 
 def get_config(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length=1, batch_size=64,
-               output_size=300, direct_lstm=False, num_epochs=300, early_stop_after=10, use_all_data=False):
+               output_size=128, direct_lstm=False, num_epochs=300, early_stop_after=10, use_all_data=False):
     return get_pignn_config(), {
         'case_nr': case_nr,
         'wake_steering': wake_steering,
@@ -350,7 +350,7 @@ def get_config(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq
 
 
 def run(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length=1, batch_size=64, direct_lstm=False,
-        output_size=300, use_all_data=False):
+        output_size=128, use_all_data=False):
     model_cfg, train_cfg = get_config(case_nr=case_nr, wake_steering=wake_steering, max_angle=max_angle,
                                       use_graph=use_graph, seq_length=seq_length, batch_size=batch_size,
                                       output_size=output_size, direct_lstm=direct_lstm, use_all_data=use_all_data)
@@ -367,13 +367,15 @@ def run(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length
     train_loader, val_loader, test_loader = create_data_loaders(dataset, train_cfg['batch_size'], seq_length)
 
     out_size = (output_size, output_size)
-    actor_model = DeConvNet(1, [64, 128, 256, 1],
+    deconv_model = DeConvNet(1, [64, 128, 256, 1],
                             output_size=output_size) if not is_temporal or not is_direct_lstm else None
-    graph_model = FlowPIGNN(**model_cfg, actor_model=actor_model).to(device) if \
-        train_cfg['use_graph'] else FCDeConvNet(232, 650, 656, 500).to(device)
+    graph_model = FlowPIGNN(**model_cfg, deconv_model=deconv_model).to(device) if \
+        train_cfg['use_graph'] else FCDeConvNet(212, 650, 656, 500).to(device)
+
+    print(graph_model)
 
     if is_temporal:
-        temporal_model = WindSpeedLSTMDeConv(seq_length, [512, 256, 1], output_size).to(
+        temporal_model = WindSpeedLSTMDeConv(seq_length, [64, 128, 256, 1], output_size).to(
             device) if is_direct_lstm else WindspeedLSTM(seq_length).to(device)
         embedding_size = (50, 10) if is_direct_lstm else out_size
         train_temporal(graph_model, temporal_model, train_cfg, train_loader, val_loader, output_folder, embedding_size, out_size)
@@ -394,7 +396,9 @@ if __name__ == "__main__":
     # args = parser.parse_args()
     # run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size, args.direct_lstm, args.use_all_data)
 
-    run(max_angle=30, seq_length=1, use_all_data=True)
+    # run(max_angle=360, seq_length=1, use_graph=False, output_size=128)
+    run(max_angle=30, seq_length=1, output_size=128, use_all_data=True)
+
     # run(1, False, 90, True, 1, 64, False)
     # run(1, False, 360, True, 1, 64, False)
     # run(1, False, 360, False, 1, 64, False)

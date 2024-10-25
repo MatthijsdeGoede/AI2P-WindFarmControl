@@ -1,6 +1,5 @@
 import torch.nn as nn
 
-from architecture.pignn.deconv import DeConvNet
 from architecture.pignn.mlp import MLP
 from architecture.pignn.pign import PIGN
 
@@ -83,18 +82,23 @@ class FlowPIGNN(PowerPIGNN):
                  input_norm: bool = True,
                  pign_mlp_params: dict = None,
                  reg_mlp_params: dict = None,
-                 actor_model: nn.Module = None):
+                 deconv_model: nn.Module = None):
         super(FlowPIGNN, self).__init__(edge_in_dim, node_in_dim, global_in_dim, edge_hidden_dim, node_hidden_dim,
                                         global_hidden_dim, output_dim, n_pign_layers, residual, input_norm,
                                         pign_mlp_params, reg_mlp_params)
         self.num_nodes = num_nodes
+        # MLP model to decrease node embedding size
+        self.mlp = MLP(input_dim=num_nodes*node_hidden_dim, output_dim=64, num_neurons=[128, 128, 64], hidden_act='ReLU')
         # Actor model on the node embeddings
-        self.actor_model = actor_model
+        self.deconv_model = deconv_model
 
     # Override
     def forward(self, data, nf, ef, gf):
         unf, uef, ug = self._forward_graph(data, nf, ef, gf)
         output = unf.reshape(-1, 1, self.num_nodes, unf.size(1))
-        if self.actor_model is not None:
-            output = self.actor_model(output)
+        if self.deconv_model is not None:
+            output_pignn = output.reshape(-1, 1, self.num_nodes*unf.size(1))
+            output_mlp = self.mlp(output_pignn)
+            output_mlp = output_mlp.reshape(-1, 1, 8, 8)
+            output = self.deconv_model(output_mlp)
         return output
