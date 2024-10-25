@@ -368,7 +368,7 @@ def run(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length
 
     out_size = (output_size, output_size)
     actor_model = DeConvNet(1, [64, 128, 256, 1],
-                            output_size=out_size) if not is_temporal or not is_direct_lstm else None
+                            output_size=output_size) if not is_temporal or not is_direct_lstm else None
     graph_model = FlowPIGNN(**model_cfg, actor_model=actor_model).to(device) if \
         train_cfg['use_graph'] else FCDeConvNet(232, 650, 656, 500).to(device)
 
@@ -385,10 +385,10 @@ if __name__ == "__main__":
     # parser = argparse.ArgumentParser(description='Run experiments with different configurations.')
     # parser.add_argument('--case_nr', type=int, default=1, help='Case number to use for the experiment (default: 1)')
     # parser.add_argument('--wake_steering', action='store_true', help='Enable wake steering (default: False)')
-    # parser.add_argument('--max_angle', type=int, default=90, help='Maximum angle for the experiment (default: 90)')
+    # parser.add_argument('--max_angle', type=int, default=30, help='Maximum angle for the experiment (default: 30)')
     # parser.add_argument('--use_graph', action='store_true', help='Use graph representation (default: False)')
     # parser.add_argument('--seq_length', type=int, default=1, help='Sequence length for the experiment (default: 1)')
-    # parser.add_argument('--batch_size', type=int, default=4, help='Batch size for the experiment (default: 4)')
+    # parser.add_argument('--batch_size', type=int, default=64, help='Batch size for the experiment (default: 64)')
     # parser.add_argument('--direct_lstm', action='store_true', help='Feed the PIGNN output directly to the LSTM (default: False)')
     # parser.add_argument('--use_all_data', action='store_true', help='Use all available training data (default: False)')
     # args = parser.parse_args()

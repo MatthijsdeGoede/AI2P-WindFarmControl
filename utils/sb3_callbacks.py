@@ -63,8 +63,8 @@ class TestComparisonCallback(BaseCallback):
     def __init__(self, eval_env: Union[Env, VecEnv], val_points, verbose=0):
         super().__init__(verbose)
         self.val_points = val_points
-        self.avg_sim_greedy_power = np.avg([point['greedy_power'] for point in val_points])
-        self.avg_sim_steering_power = np.avg([point['wake_power'] for point in val_points])
+        self.avg_sim_greedy_power = np.mean([point['greedy_power'] for point in val_points])
+        self.avg_sim_steering_power = np.mean([point['wake_power'] for point in val_points])
         self.eval_env = eval_env
 
     def _on_step(self):
@@ -72,12 +72,13 @@ class TestComparisonCallback(BaseCallback):
         greedy_val_power = []
         model_val_power = []
         for val_point in self.val_points:
-            greedy_yaws = np.ones(10) * 7
-            options = {"wind_direction": val_point["wind_direction"], "yaws": greedy_yaws}
+            greedy_yaws = np.ones(10) * val_point["wind_direction"]
+            greedy_actions = np.ones(10) * 7
+            options = {"wind_direction": np.array([val_point["wind_direction"]]), "yaws": greedy_yaws}
 
             # Model greedy
             self.eval_env.reset(seed=seed, options=options)
-            _, rewards_greedy, _, _, info_greedy = self.eval_env.step(greedy_yaws)
+            _, rewards_greedy, _, _, info_greedy = self.eval_env.step(greedy_actions)
             greedy_val_power.append(rewards_greedy)
 
             # Model wake steering

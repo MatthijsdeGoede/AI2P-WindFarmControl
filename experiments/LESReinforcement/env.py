@@ -102,7 +102,6 @@ class TurbineEnv(gym.Env):
 
         # Use the graph model to create a wind speed map prediction
         wind_speed_map, _ = self.predict_wind_speed_map(yaws)
-
         self._last_wind_speed = self.wind_speed_extractor(wind_speed_map, self._wind_direction, yaws)
 
         # Convert the extracted wind speeds at the turbines to power
@@ -161,7 +160,7 @@ class TurbineEnv(gym.Env):
 def create_env(case=1, max_episode_steps=100, render_mode="matplotlib", map_size=(300, 300)):
     # Make sure to actually use model that accepts an array of yaw angles instead of this, and load the pretrained weights.
     model_cfg = get_pignn_config()
-    actor_model = DeConvNet(1, [64, 128, 256, 1], output_size=(map_size, map_size))
+    actor_model = DeConvNet(1, [64, 128, 256, 1], output_size=map_size[0])
     model = FlowPIGNN(**model_cfg, actor_model=actor_model)
     model.load_state_dict(torch.load("model_case01/pignn_best.pt"))
 
