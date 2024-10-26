@@ -95,6 +95,7 @@ class TurbineEnv(gym.Env):
 
         x = torch.tensor(yaws).reshape(-1, 1).float()
         pos = self.turbine_locations
+        print(pos.size())
         wind_vec = angle_to_vec(self._wind_direction[0])
         ei, ef = create_turbine_graph_tensors(self.turbine_locations, wind_vec, max_angle=30)
         gf = torch.tensor(wind_vec).reshape(-1, 2)
