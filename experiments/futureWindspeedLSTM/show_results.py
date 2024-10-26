@@ -29,8 +29,8 @@ def make_model_predictions(model, inputs, length):
 
 def get_model_targets(dataset, index, length):
     if length <= 0:
-        _, targets = dataset[index]
-        return targets
+        # _, targets = dataset[index]
+        return torch.zeros((50,128,128))
     _, targets = dataset[index]
     sequence_length = targets.shape[0]
     next_targets = get_model_targets(dataset, index + sequence_length, length - sequence_length)
@@ -39,7 +39,7 @@ def get_model_targets(dataset, index, length):
 
 def plot(animate: bool):
 
-    latest = max(os.listdir("results"))
+    latest = "20241015114832_Case01"
 
     with open(f"results/{latest}/config.json", "r") as f:
         config = json.load(f)
@@ -50,7 +50,8 @@ def plot(animate: bool):
     scale = config["scale"]
 
     transform = create_transform(scale)
-    dataset = get_dataset(config["dataset_dirs"], sequence_length, transform)
+    dataset = get_dataset([config["root_dir"]], sequence_length, transform)
+    # dataset = get_dataset(config["dataset_dirs"], sequence_length, transform)
 
     train_loader, val_loader, test_loader = create_data_loaders(dataset, batch_size)
     model = WindspeedLSTM(sequence_length).to(device)
@@ -61,11 +62,10 @@ def plot(animate: bool):
 
     print(f"results/{latest}/{max_epoch}")
 
-
     with torch.no_grad():
         if animate:
-            animation_length = 50
-            start = np.random.randint(0, min(1, len(dataset) - max(sequence_length, animation_length)))
+            animation_length = 45
+            start = np.random.randint(0, max(1, len(dataset) - max(sequence_length, animation_length)))
             inputs, _ = dataset[start]
             outputs = make_model_predictions(model, inputs[None, :, :, :], animation_length).squeeze()
             print(f"Outputs.shape: {outputs.shape}")
@@ -84,5 +84,5 @@ def plot(animate: bool):
                 plot_prediction_vs_real(output[0, 45, :, :].cpu(), targets[0, 45, :, :].cpu(), case)
 
 if __name__ == '__main__':
-    plot(False)
+    plot(True)
     # plot(True)
