@@ -11,7 +11,6 @@ from gymnasium.utils import env_checker
 
 import numpy as np
 
-from WGN.pignn import FlowPIGNN
 from GCH_block import GCH
 
 from utils.extract_windspeed import WindspeedExtractor
