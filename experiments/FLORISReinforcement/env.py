@@ -15,7 +15,7 @@ from GCH_block import GCH
 
 from utils.extract_windspeed import WindspeedExtractor
 from utils.preprocessing import read_turbine_positions, angle_to_vec, create_turbine_graph_tensors, correct_angles
-from utils.visualization import plot_mean_absolute_speed, get_mean_absolute_speed_figure
+from utils.visualization_florisRL import plot_mean_absolute_speed, get_mean_absolute_speed_figure
 
 device = torch.device("cpu")
 
@@ -159,7 +159,7 @@ def create_env(case=1):
     max_episode_steps = 100
 
     turbines = "12_to_15" if case == 1 else "06_to_09" if case == 2 else "00_to_03"
-    layout_file = f"../../Data/input_data/Case_0{case}/HKN_{turbines}_layout_balanced.csv"
+    layout_file = f"../../data/Case_01/HKN_12_to_15_layout_balanced.csv"
     turbine_locations = read_turbine_positions(layout_file)
 
     model = GCH( x_resolution = 128,
