@@ -17,12 +17,19 @@ class GridDataset(Dataset):
                 only_grid_values=False, 
                 sampling=False, 
                 samples_per_grid=128, 
-                top_vorticity=0.85):
+                top_vorticity=0.80,
+                time_scaling_factor=1e-3,
+                distance_scaling_factor=1e-3,
+                scaling_strictly_positive=False):
         
         super().__init__()
 
         self.datasets = []
         self.data_type = data_type
+
+        self.time_scaling_factor=time_scaling_factor
+        self.distance_scaling_factor=distance_scaling_factor
+        self.scaling_strictly_positive=scaling_strictly_positive
 
         if (self.data_type == "no-wake"):
             self.datasets.append(CaseDataset(dir, turbine_csv, wind_csv, only_grid_values, sampling, samples_per_grid, top_vorticity))
@@ -42,6 +49,37 @@ class GridDataset(Dataset):
         return sum([len(x) for x in self.datasets])
     
 
+    def _rescale_inputs(self, inputs: torch.Tensor):
+        """
+        The first two columns of the input is x-y coordinates of a 300x300 grid. The original simulation is
+        performed over a 5000m x 5000m area. First let's convert the grid indices to distances and then rescale it.
+
+        The third column is time in seconds. The simulation starts at time = 30.000s and continues for 12.000 seconds
+
+        Strictly positive determines if the inputs are scaled to (-x, x) (False) or (0, x) (True).
+
+        e.g., given scaling factor of 1/1000, coordinates are in range (0, 5) and time is in range (0, 12)
+        """
+        inputs_ = inputs.detach().clone()
+
+        inputs_[:, :2] = inputs_[:, :2] * (5000/300)
+        inputs_[:, 2] = inputs_[:, 2] - 30000
+
+        inputs_[:, :2] = inputs_[:, :2] * self.distance_scaling_factor
+        inputs_[:, 2] = inputs_[:, 2] * self.time_scaling_factor
+
+        if (self.scaling_strictly_positive):
+            return inputs_
+        
+        mean_distance = (5000 * self.distance_scaling_factor) / 2
+        mean_time = (12000 * self.time_scaling_factor) / 2
+
+        inputs_[:, :2] = inputs_[:, :2] - mean_distance
+        inputs_[:, 2] = inputs_[:, 2] - mean_time
+
+        return inputs_
+    
+
     def is_index_wake_steering(self, index):    
         files_per_case = len(self.datasets[0])
         is_wake_steering = False if (index // files_per_case == 0) else True
@@ -51,13 +89,14 @@ class GridDataset(Dataset):
 
     def __getitem__(self, index):
         if (self.data_type != "both"):
-            return self.datasets[0][index]
+            out =  self.datasets[0][index]
         
         else:
             is_wake_steering, index = self.is_index_wake_steering(index)
-            return self.datasets[1][index] if is_wake_steering else self.datasets[0][index]
+            out = self.datasets[1][index] if is_wake_steering else self.datasets[0][index]
 
-    
+        return self._rescale_inputs(out[0]), out[1]
+
 
 class CaseDataset(Dataset):
     def __init__(self, dir, turbine_csv, wind_csv, only_grid_values=False, sampling=False, samples_per_grid=256, top_vorticity=0.8):
@@ -141,7 +180,6 @@ class CaseDataset(Dataset):
                                    p=selection_odds/selection_odds.sum())
         
         return list(indices)
-        
 
     def __getitem__(self, index):
         if (isinstance(index, int) or isinstance(index, np.int32)):
