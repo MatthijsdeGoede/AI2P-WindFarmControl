@@ -27,15 +27,9 @@ MU = 1.7894e-5 #Dynamic viscosity of air (kg/m-s)
 DENSITY = 1.2041 #Atmospheric air density at 20 celsius (kg/m3)
 
 class NSLoss(torch.nn.Module):
-    def __init__(self, physics_coef=1, rescale_factor=1/1250):
-        """
-        We have to rescale each unit: distance (meters), mass (kilograms), time (seconds)
-        """
+    def __init__(self, physics_coef=1):
         super().__init__()
         self.physics_coef = physics_coef
-
-        self.MU = MU * rescale_factor
-        self.DENSITY = DENSITY * (rescale_factor**2)
 
     
     def forward(self, input, output, target):
@@ -61,7 +55,7 @@ class NSLoss(torch.nn.Module):
         u_yy = u_hessian[:, 1]
 
         #rho * (u_t + u*u_x + v*u_y) + p_x - MU (u2_x2 + u2_y2) = 0
-        momentum = self.DENSITY * (u_t + u_pred*u_x + v_pred*u_y) + p_x - self.MU * (u_xx + u_yy)
+        momentum = DENSITY * (u_t + u_pred*u_x + v_pred*u_y) + p_x - MU * (u_xx + u_yy)
         momentum_loss = momentum.pow(2).mean()
         return momentum_loss
 
@@ -79,7 +73,7 @@ class NSLoss(torch.nn.Module):
         v_xx = v_hessian[:, 0]
         v_yy = v_hessian[:, 1]
 
-        momentum = self.DENSITY * (v_t + u_pred * v_x + v_pred * v_y) + p_y - self.MU * (v_xx + v_yy)
+        momentum = DENSITY * (v_t + u_pred * v_x + v_pred * v_y) + p_y - MU * (v_xx + v_yy)
         momentum_loss = momentum.pow(2).mean()
         return momentum_loss
 
@@ -95,7 +89,7 @@ class NSLoss(torch.nn.Module):
         w_xx = w_hessian[:, 0]
         w_yy = w_hessian[:, 1]
 
-        momentum = self.DENSITY * (w_t + u_pred * w_x + v_pred * w_y) - self.MU * (w_xx + w_yy)
+        momentum = DENSITY * (w_t + u_pred * w_x + v_pred * w_y) - MU * (w_xx + w_yy)
         momentum_loss = momentum.pow(2).mean()
         return momentum_loss
 
