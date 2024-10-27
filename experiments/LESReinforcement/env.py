@@ -24,7 +24,7 @@ device = torch.device("cpu")
 class TurbineEnv(gym.Env):
     metadata = {"render_modes": ["rgb_array", "matplotlib"], "render_fps": 4}
 
-    def __init__(self, wind_speed_map_model, turbine_locations, render_mode=None, map_size=300, yaw_step=5, max_yaw=30):
+    def __init__(self, wind_speed_map_model, turbine_locations, render_mode=None, map_size=128, yaw_step=5, max_yaw=30):
         self.turbine_locations = torch.tensor(turbine_locations)
         self.n_turbines = len(turbine_locations)
         self.map_size = map_size
@@ -157,7 +157,7 @@ class TurbineEnv(gym.Env):
         return
 
 
-def create_env(case=1, max_episode_steps=100, render_mode="matplotlib", map_size=(300, 300)):
+def create_env(case=1, max_episode_steps=100, render_mode="matplotlib", map_size=(128, 128)):
     # Make sure to actually use model that accepts an array of yaw angles instead of this, and load the pretrained weights.
     model_cfg = get_pignn_config()
     deconv_model = DeConvNet(1, [64, 128, 256, 1], output_size=map_size[0])

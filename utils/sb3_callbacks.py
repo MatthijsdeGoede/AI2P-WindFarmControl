@@ -72,8 +72,8 @@ class TestComparisonCallback(BaseCallback):
         greedy_val_power = []
         model_val_power = []
         for val_point in self.val_points:
-            greedy_yaws = np.ones(10) * val_point["wind_direction"]
-            greedy_actions = np.ones(10) * 7
+            greedy_yaws = np.ones(10, dtype=float) * val_point["wind_direction"]
+            greedy_actions = np.zeros(10, dtype=float)
             options = {"wind_direction": np.array([val_point["wind_direction"]]), "yaws": greedy_yaws}
 
             # Model greedy
@@ -94,6 +94,6 @@ class TestComparisonCallback(BaseCallback):
         self.logger.record("evaluation/avg_sim_greedy_power", self.avg_sim_greedy_power)
         self.logger.record("evaluation/avg_sim_steering_power", self.avg_sim_steering_power)
 
-        print(f"avg greedy power (model, sim): ({mean_greedy_power}, {self.avg_sim_greedy_power})")
-        print(f"avg steering power (model, sim): {mean_steering_power}, {self.avg_sim_steering_power}")
+        # print(f"avg greedy power (model, sim): ({mean_greedy_power}, {self.avg_sim_greedy_power})")
+        # print(f"avg steering power (model, sim): {mean_steering_power}, {self.avg_sim_steering_power}")
         return True

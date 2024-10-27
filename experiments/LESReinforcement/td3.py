@@ -17,7 +17,7 @@ def train():
     num_val_points = 100
     env = create_env()
     val_points = create_validation_points(case_nr, num_val_points, map_size=(300, 300))
-    eval_callback = EveryNTimesteps(n_steps=100, callback=TestComparisonCallback(env, val_points=val_points))
+    eval_callback = EveryNTimesteps(n_steps=1000, callback=TestComparisonCallback(env, val_points=val_points))
 
     fig_callback = FigureRecorderCallback(env)
     ntimestep_callback = EveryNTimesteps(n_steps=500, callback=fig_callback)

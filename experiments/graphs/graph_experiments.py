@@ -53,24 +53,21 @@ class GraphTemporalDataset(Dataset):
         self.root = root
         self.seq_length = seq_length
         self.preload = preload
-        self.num_samples = len([name for name in os.listdir(self.root) if name != "README.md"]) // self.seq_length
 
         if preload:
-            self.data = [torch.load(f"{self.root}/graph_{30005 + (start * self.seq_length + i) * 5}.pt") for start in
-                         range(self.num_samples) for i in range(self.seq_length)]
+            self.data = [torch.load(f"{self.root}/graph_{30005 + (start + i) * 5}.pt") for start in range(self.len()) for i in range(self.seq_length)]
 
     def _get_sequence(self, start):
         if self.preload:
-            return [self.data[start * self.seq_length + i] for i in range(self.seq_length)]
+            return [self.data[start + i] for i in range(self.seq_length)]
         else:
-            return [torch.load(f"{self.root}/graph_{30005 + (start * self.seq_length + i) * 5}.pt") for i in
-                    range(self.seq_length)]
+            return [torch.load(f"{self.root}/graph_{30005 + (start + i) * 5}.pt") for i in range(self.seq_length)]
 
     def len(self):
-        return self.num_samples - 2
+        return len([name for name in os.listdir(self.root)]) - 2 * self.seq_length
 
     def get(self, idx):
-        return self._get_sequence(idx), self._get_sequence(idx + 1)
+        return self._get_sequence(idx), self._get_sequence(idx + self.seq_length)
 
 
 def get_dataset(dataset_dirs, is_temporal, seq_length):
@@ -212,13 +209,13 @@ def train_temporal_epoch(train_loader, graph_model, temporal_model, criterion, o
     graph_model.train()
     temporal_model.train()
     for i, batch in enumerate(train_loader):
-        print(f"processing batch {i + 1}/{len(train_loader)}")
-        loss = process_temporal_batch(batch, graph_model, temporal_model, criterion, embedding_size, output_size)
-        train_losses.append(loss.item())
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        scheduler.step()
+        if i < len(train_loader) - 1:
+            loss = process_temporal_batch(batch, graph_model, temporal_model, criterion, embedding_size, output_size)
+            train_losses.append(loss.item())
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            scheduler.step()
     return np.mean(train_losses)
 
 
@@ -227,10 +224,11 @@ def eval_temporal_epoch(val_loader, graph_model, temporal_model, criterion, embe
         graph_model.eval()
         temporal_model.eval()
         val_losses = []
-        for batch in val_loader:
-            val_loss = process_temporal_batch(batch, graph_model, temporal_model, criterion, embedding_size,
-                                              output_size)
-            val_losses.append(val_loss.item())
+        for i, batch in enumerate(val_loader):
+            if i < len(val_loader) - 1:
+                val_loss = process_temporal_batch(batch, graph_model, temporal_model, criterion, embedding_size,
+                                                  output_size)
+                val_losses.append(val_loss.item())
     graph_model.train()
     temporal_model.train()
     return np.mean(val_losses)
@@ -405,6 +403,8 @@ if __name__ == "__main__":
     # run(case_nr=1, wake_steering=False, max_angle=90, seq_length=1, output_size=128)
     # run(case_nr=1, wake_steering=False, max_angle=360, seq_length=1, output_size=128)
 
-    run(case_nr=1, wake_steering=True, max_angle=30, seq_length=1, output_size=128)
+    # run(case_nr=1, wake_steering=True, max_angle=30, seq_length=50, batch_size=4, output_size=128, use_all_data=False)
+    run(case_nr=1, wake_steering=False, max_angle=30, seq_length=50, batch_size=4, output_size=128, direct_lstm=True)
+    # run(case_nr=1, wake_steering=False, max_angle=30, seq_length=50, batch_size=4, output_size=128, direct_lstm=True)
     # run(case_nr=1, wake_steering=True, max_angle=90, seq_length=1, output_size=128)
     # run(case_nr=1, wake_steering=True, max_angle=360, seq_length=1, output_size=128)
