@@ -11,6 +11,7 @@ from skimage.transform import resize
 
 
 def prepare_graph_training_data(case_nr=1, wake_steering=False, max_angle=30):
+    map_size = 128
     type = "LuT2deg_internal" if wake_steering else "BL"
     start_ts = 30000
     min_ts = 30005
@@ -43,7 +44,7 @@ def prepare_graph_training_data(case_nr=1, wake_steering=False, max_angle=30):
         edge_index, edge_attr = create_turbine_graph_tensors(turbine_pos, wind_vec, max_angle=max_angle)
         # node_feats = torch.stack((wind_speeds[:, i], yaw_measurement[:, i], rotation_measurement[:, i]), dim=0).T
         node_feats = yaw_measurement[:, i].reshape(-1, 1)
-        target = torch.tensor(resize(np.load(f"{flow_data_dir}/windspeedMapScalars/Windspeed_map_scalars_{timestep}.npy"), (300, 300))).flatten()
+        target = torch.tensor(resize(np.load(f"{flow_data_dir}/windspeedMapScalars/Windspeed_map_scalars_{timestep}.npy"), (map_size, map_size))).flatten()
         graph_data = Data(x=node_feats.float(), edge_index=edge_index, edge_attr=edge_attr.float(), y=target.float(), pos=turbine_pos)
         graph_data.global_feats = torch.tensor(wind_vec).reshape(-1, 2)
         torch.save(graph_data, f"{output_dir}/graph_{timestep}.pt")
@@ -54,3 +55,23 @@ if __name__ == "__main__":
     prepare_graph_training_data(1, False, 30)
     prepare_graph_training_data(2, False, 30)
     prepare_graph_training_data(3, False, 30)
+
+    prepare_graph_training_data(1, True, 30)
+    prepare_graph_training_data(2, True, 30)
+    prepare_graph_training_data(3, True, 30)
+
+    prepare_graph_training_data(1, False, 90)
+    prepare_graph_training_data(2, False, 90)
+    prepare_graph_training_data(3, False, 90)
+
+    prepare_graph_training_data(1, True, 90)
+    prepare_graph_training_data(2, True, 90)
+    prepare_graph_training_data(3, True, 90)
+
+    prepare_graph_training_data(1, False, 360)
+    prepare_graph_training_data(2, False, 360)
+    prepare_graph_training_data(3, False, 360)
+
+    prepare_graph_training_data(1, True, 360)
+    prepare_graph_training_data(2, True, 360)
+    prepare_graph_training_data(3, True, 360)

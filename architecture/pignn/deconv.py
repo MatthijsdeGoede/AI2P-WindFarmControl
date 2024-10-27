@@ -1,5 +1,7 @@
 from torch import nn, relu
 
+from architecture.pignn.mlp import MLP
+
 
 class DeConvNet(nn.Module):
     def __init__(self, input_channels, layer_channels, output_size=(128, 128)):
@@ -15,9 +17,8 @@ class DeConvNet(nn.Module):
         self.output_size = output_size
 
     def forward(self, x):
-        # Use interpolation to reach the exact desired output size
-        output_tensor = self.de_conv(x.reshape(-1, 1, 10, 50))
-        return nn.functional.interpolate(output_tensor, size=self.output_size, mode='bilinear', align_corners=False).flatten(start_dim=1)
+        output_tensor = self.de_conv(x)
+        return output_tensor.flatten(start_dim=1)
 
 
 class FCDeConvNet(nn.Module):
@@ -26,10 +27,13 @@ class FCDeConvNet(nn.Module):
         self.fc1 = nn.Linear(input_size, hidden1_size)
         self.fc2 = nn.Linear(hidden1_size, hidden2_size)
         self.fc3 = nn.Linear(hidden2_size, output_size)
-        self.de_conv = DeConvNet(1, [128, 256, 1])
+        self.mlp = MLP(input_dim=500, output_dim=64, num_neurons=[128, 128, 64], hidden_act='ReLU')
+        self.de_conv = DeConvNet(1, [64, 128, 256, 1], output_size=output_size)
 
     def forward(self, x):
+        x = x.reshape(-1, 212)
         x = relu(self.fc1(x))
         x = relu(self.fc2(x))
         x = self.fc3(x)
-        return self.de_conv(x.reshape(-1, 1, 10, 50))
+        x = self.mlp(x.reshape(-1, 1, 500))
+        return self.de_conv(x.reshape(-1, 1, 8, 8))

@@ -7,6 +7,7 @@ import numpy as np
 import torch.nn as nn
 
 from datetime import datetime
+
 from torch.optim import Adam
 from torch_geometric.data import Dataset, Data
 from torch_geometric.loader import DataLoader
@@ -17,25 +18,33 @@ from architecture.pignn.deconv import FCDeConvNet, DeConvNet
 from architecture.windspeedLSTM.windspeedLSTM import WindspeedLSTM, WindSpeedLSTMDeConv
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+generator = torch.Generator()
+generator.manual_seed(42)
 
 
 class GraphDataset(Dataset):
-    def __init__(self, root, transform=None, pre_transform=None):
+    def __init__(self, root, preload=True, transform=None, pre_transform=None):
         super(GraphDataset, self).__init__(root, transform, pre_transform)
+        self.num_samples = len([name for name in os.listdir(self.root) if name != "README.md"])
+        self.data = None
+        self.graph_paths = None
         self.root = root
-        self.graph_paths = self.load_graph_paths()
+        self.preload = preload
+        self.load_graph_paths()
 
     def load_graph_paths(self):
-        graph_paths = [f"{self.root}/graph_{i}.pt" for i in range(30005, 42000 + 1, 5)]
-        return graph_paths
+        if self.preload:
+            self.data = [torch.load(f"{self.root}/graph_{i}.pt") for i in range(30005, 42000 + 1, 5)]
+        else:
+            self.graph_paths = [f"{self.root}/graph_{i}.pt" for i in range(30005, 42000 + 1, 5)]
 
     def len(self):
-        return len(self.graph_paths)
+        return self.num_samples
 
     def get(self, idx):
-        graph_path = self.graph_paths[idx]
-        graph_data = torch.load(graph_path)
-        return graph_data
+        if self.preload:
+            return self.data[idx]
+        return torch.load(self.graph_paths[idx])
 
 
 class GraphTemporalDataset(Dataset):
@@ -44,24 +53,21 @@ class GraphTemporalDataset(Dataset):
         self.root = root
         self.seq_length = seq_length
         self.preload = preload
-        self.num_samples = len([name for name in os.listdir(self.root) if name != "README.md"]) // self.seq_length
 
         if preload:
-            self.data = [torch.load(f"{self.root}/graph_{30005 + (start * self.seq_length + i) * 5}.pt") for start in
-                         range(self.num_samples) for i in range(self.seq_length)]
+            self.data = [torch.load(f"{self.root}/graph_{30005 + (start + i) * 5}.pt") for start in range(self.len()) for i in range(self.seq_length)]
 
     def _get_sequence(self, start):
         if self.preload:
-            return [self.data[start * self.seq_length + i] for i in range(self.seq_length)]
+            return [self.data[start + i] for i in range(self.seq_length)]
         else:
-            return [torch.load(f"{self.root}/graph_{30005 + (start * self.seq_length + i) * 5}.pt") for i in
-                    range(self.seq_length)]
+            return [torch.load(f"{self.root}/graph_{30005 + (start + i) * 5}.pt") for i in range(self.seq_length)]
 
     def len(self):
-        return self.num_samples - 2
+        return len([name for name in os.listdir(self.root)]) - 2 * self.seq_length
 
     def get(self, idx):
-        return self._get_sequence(idx), self._get_sequence(idx + 1)
+        return self._get_sequence(idx), self._get_sequence(idx + self.seq_length)
 
 
 def get_dataset(dataset_dirs, is_temporal, seq_length):
@@ -86,7 +92,7 @@ def create_data_loaders(dataset, batch_size, seq_length):
     val_size = int(0.1 * total_size)
     test_size = total_size - train_size - val_size
     collate = custom_collate_fn if seq_length > 1 else None
-    train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
+    train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size], generator=generator)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate, pin_memory=True)
@@ -111,6 +117,7 @@ def compute_loss(batch, criterion, model):
 
 def train_epoch(train_loader, model, criterion, optimizer, scheduler):
     train_losses = []
+    model.train()
     for i, batch in enumerate(train_loader):
         batch = batch.to(device)
         loss = compute_loss(batch, criterion, model)
@@ -139,6 +146,9 @@ def train(model, train_params, train_loader, val_loader, output_folder):
     criterion = nn.MSELoss()
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50)
 
+    train_loss_list = []
+    val_loss_list = []
+
     num_epochs = train_params['num_epochs']
     best_loss = float('inf')
     epochs_no_improve = 0
@@ -148,13 +158,18 @@ def train(model, train_params, train_loader, val_loader, output_folder):
         train_loss = train_epoch(train_loader, model, criterion, optimizer, scheduler)
         val_loss = eval_epoch(val_loader, model, criterion)
         learning_rate = optimizer.param_groups[0]['lr']
-        print(
-            f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {train_loss}, validation loss: {val_loss}")
+        train_loss_list.append(train_loss)
+        val_loss_list.append(val_loss)
+
+        print(f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {train_loss}, validation loss: {val_loss}")
 
         # Save model pointer
         torch.save(model.state_dict(), f"{output_folder}/pignn_{epoch}.pt")
 
         # Check early stopping criterion
+        if epoch == num_epochs:
+            np.save(f"{output_folder}/train_loss", train_loss_list)
+            np.save(f"{output_folder}/val_loss", val_loss_list)
         if val_loss < best_loss:
             best_loss = val_loss
             epochs_no_improve = 0
@@ -163,6 +178,8 @@ def train(model, train_params, train_loader, val_loader, output_folder):
             epochs_no_improve += 1
 
         if epochs_no_improve >= train_params['early_stop_after']:
+            np.save(f"{output_folder}/train_loss", train_loss_list)
+            np.save(f"{output_folder}/val_loss", val_loss_list)
             print(f'Early stopping at epoch {epoch}')
             break
 
@@ -189,14 +206,16 @@ def process_temporal_batch(batch, graph_model, temporal_model, criterion, embedd
 def train_temporal_epoch(train_loader, graph_model, temporal_model, criterion, optimizer, scheduler, embedding_size,
                          output_size):
     train_losses = []
+    graph_model.train()
+    temporal_model.train()
     for i, batch in enumerate(train_loader):
-        print(f"processing batch {i + 1}/{len(train_loader)}")
-        loss = process_temporal_batch(batch, graph_model, temporal_model, criterion, embedding_size, output_size)
-        train_losses.append(loss.item())
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        scheduler.step()
+        if i < len(train_loader) - 1:
+            loss = process_temporal_batch(batch, graph_model, temporal_model, criterion, embedding_size, output_size)
+            train_losses.append(loss.item())
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            scheduler.step()
     return np.mean(train_losses)
 
 
@@ -205,10 +224,11 @@ def eval_temporal_epoch(val_loader, graph_model, temporal_model, criterion, embe
         graph_model.eval()
         temporal_model.eval()
         val_losses = []
-        for batch in val_loader:
-            val_loss = process_temporal_batch(batch, graph_model, temporal_model, criterion, embedding_size,
-                                              output_size)
-            val_losses.append(val_loss.item())
+        for i, batch in enumerate(val_loader):
+            if i < len(val_loader) - 1:
+                val_loss = process_temporal_batch(batch, graph_model, temporal_model, criterion, embedding_size,
+                                                  output_size)
+                val_losses.append(val_loss.item())
     graph_model.train()
     temporal_model.train()
     return np.mean(val_losses)
@@ -220,6 +240,9 @@ def train_temporal(graph_model, temporal_model, train_params, train_loader, val_
     criterion = nn.MSELoss().to(device)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50)
 
+    train_loss_list = []
+    val_loss_list = []
+
     num_epochs = train_params['num_epochs']
     best_loss = float('inf')
     epochs_no_improve = 0
@@ -230,12 +253,17 @@ def train_temporal(graph_model, temporal_model, train_params, train_loader, val_
                                           embedding_size, output_size)
         val_loss = eval_temporal_epoch(val_loader, graph_model, temporal_model, criterion, embedding_size, output_size)
         learning_rate = optimizer.param_groups[0]['lr']
-        print(
-            f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {train_loss}, validation loss: {val_loss}")
+        train_loss_list.append(train_loss)
+        val_loss_list.append(val_loss)
+        print(f"step {epoch}/{num_epochs}, lr: {learning_rate}, training loss: {train_loss}, validation loss: {val_loss}")
 
         # Save model pointers
         torch.save(graph_model.state_dict(), f"{output_folder}/pignn_{epoch}.pt")
         torch.save(temporal_model.state_dict(), f"{output_folder}/unet_lstm_{epoch}.pt")
+
+        if epoch == num_epochs:
+            np.save(f"{output_folder}/train_loss", train_loss_list)
+            np.save(f"{output_folder}/val_loss", val_loss_list)
 
         # Check early stopping criterion
         if val_loss < best_loss:
@@ -247,6 +275,8 @@ def train_temporal(graph_model, temporal_model, train_params, train_loader, val_
             epochs_no_improve += 1
 
         if epochs_no_improve >= train_params['early_stop_after']:
+            np.save(f"{output_folder}/train_loss", train_loss_list)
+            np.save(f"{output_folder}/val_loss", val_loss_list)
             print(f'Early stopping at epoch {epoch}')
             break
 
@@ -304,7 +334,7 @@ def get_dataset_dirs(case_nr, wake_steering, max_angle, use_all_data):
 
 
 def get_config(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length=1, batch_size=64,
-               output_size=300, direct_lstm=False, num_epochs=200, early_stop_after=10, use_all_data=False):
+               output_size=128, direct_lstm=False, num_epochs=300, early_stop_after=10, use_all_data=False):
     return get_pignn_config(), {
         'case_nr': case_nr,
         'wake_steering': wake_steering,
@@ -320,7 +350,8 @@ def get_config(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq
     }
 
 
-def run(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length=1, batch_size=64, direct_lstm=False, output_size=300, use_all_data=False):
+def run(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length=1, batch_size=64, direct_lstm=False,
+        output_size=128, use_all_data=False):
     model_cfg, train_cfg = get_config(case_nr=case_nr, wake_steering=wake_steering, max_angle=max_angle,
                                       use_graph=use_graph, seq_length=seq_length, batch_size=batch_size,
                                       output_size=output_size, direct_lstm=direct_lstm, use_all_data=use_all_data)
@@ -337,17 +368,18 @@ def run(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length
     train_loader, val_loader, test_loader = create_data_loaders(dataset, train_cfg['batch_size'], seq_length)
 
     out_size = (output_size, output_size)
-    actor_model = DeConvNet(1, [64, 128, 256, 1],
-                            output_size=out_size) if not is_temporal or not is_direct_lstm else None
-    graph_model = FlowPIGNN(**model_cfg, actor_model=actor_model).to(device) if \
-        train_cfg['use_graph'] else FCDeConvNet(232, 650, 656, 500).to(device)
+    deconv_model = DeConvNet(1, [64, 128, 256, 1],
+                            output_size=output_size) if not is_temporal or not is_direct_lstm else None
+    graph_model = FlowPIGNN(**model_cfg, deconv_model=deconv_model).to(device) if \
+        train_cfg['use_graph'] else FCDeConvNet(212, 650, 656, 500).to(device)
+
+    print(graph_model)
 
     if is_temporal:
-        temporal_model = WindSpeedLSTMDeConv(seq_length, [512, 256, 1], output_size).to(
+        temporal_model = WindSpeedLSTMDeConv(seq_length, [64, 128, 256, 1], output_size).to(
             device) if is_direct_lstm else WindspeedLSTM(seq_length).to(device)
         embedding_size = (50, 10) if is_direct_lstm else out_size
-        train_temporal(graph_model, temporal_model, train_cfg, train_loader, val_loader, output_folder, embedding_size,
-                       out_size)
+        train_temporal(graph_model, temporal_model, train_cfg, train_loader, val_loader, output_folder, embedding_size, out_size)
     else:
         train(graph_model, train_cfg, train_loader, val_loader, output_folder)
 
@@ -356,21 +388,23 @@ if __name__ == "__main__":
     # parser = argparse.ArgumentParser(description='Run experiments with different configurations.')
     # parser.add_argument('--case_nr', type=int, default=1, help='Case number to use for the experiment (default: 1)')
     # parser.add_argument('--wake_steering', action='store_true', help='Enable wake steering (default: False)')
-    # parser.add_argument('--max_angle', type=int, default=90, help='Maximum angle for the experiment (default: 90)')
+    # parser.add_argument('--max_angle', type=int, default=30, help='Maximum angle for the experiment (default: 30)')
     # parser.add_argument('--use_graph', action='store_true', help='Use graph representation (default: False)')
     # parser.add_argument('--seq_length', type=int, default=1, help='Sequence length for the experiment (default: 1)')
-    # parser.add_argument('--batch_size', type=int, default=4, help='Batch size for the experiment (default: 4)')
+    # parser.add_argument('--batch_size', type=int, default=64, help='Batch size for the experiment (default: 64)')
     # parser.add_argument('--direct_lstm', action='store_true', help='Feed the PIGNN output directly to the LSTM (default: False)')
     # parser.add_argument('--use_all_data', action='store_true', help='Use all available training data (default: False)')
     # args = parser.parse_args()
-    # run(args.case_nr, args.wake_steering, args.max_angle, args.use_graph, args.seq_length, args.batch_size, args.direct_lstm, args.use_all_data)
+    #
+    # run(case_nr=args.case_nr, wake_steering=args.wake_steering, max_angle=args.max_angle, use_graph=args.use_graph,
+    # seq_length=args.seq_length, batch_size=args.batch_size, direct_lstm=args.direct_lstm, use_all_data=args.use_all_data)
 
-    run(max_angle=30, seq_length=1, use_all_data=True)
-    # run(1, False, 90, True, 1, 64, False)
-    # run(1, False, 360, True, 1, 64, False)
-    # run(1, False, 360, False, 1, 64, False)
+    # run(case_nr=1, wake_steering=False, max_angle=30, seq_length=1, output_size=128)
+    # run(case_nr=1, wake_steering=False, max_angle=90, seq_length=1, output_size=128)
+    # run(case_nr=1, wake_steering=False, max_angle=360, seq_length=1, output_size=128)
 
-    # run(1, True, 30, True, 1, 64, False)
-    # run(1, True, 90, True, 1, 64, False)
-    # run(1, True, 360, True, 1, 64, False)
-    # run(1, True, 360, False, 1, 64, False)
+    # run(case_nr=1, wake_steering=True, max_angle=30, seq_length=50, batch_size=4, output_size=128, use_all_data=False)
+    run(case_nr=1, wake_steering=False, max_angle=30, seq_length=50, batch_size=4, output_size=128, direct_lstm=True)
+    # run(case_nr=1, wake_steering=False, max_angle=30, seq_length=50, batch_size=4, output_size=128, direct_lstm=True)
+    # run(case_nr=1, wake_steering=True, max_angle=90, seq_length=1, output_size=128)
+    # run(case_nr=1, wake_steering=True, max_angle=360, seq_length=1, output_size=128)

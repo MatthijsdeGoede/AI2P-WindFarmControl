@@ -2,7 +2,7 @@ from typing import Optional
 
 import gymnasium as gym
 import torch
-from gymnasium.wrappers import TimeLimit
+from gymnasium.wrappers import TimeLimit, FlattenObservation
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from gymnasium import spaces
@@ -21,10 +21,10 @@ from utils.visualization import plot_mean_absolute_speed, get_mean_absolute_spee
 device = torch.device("cpu")
 
 
-class TurbineEnv(gym.Env):
+class ContinuousTurbineEnv(gym.Env):
     metadata = {"render_modes": ["rgb_array", "matplotlib"], "render_fps": 4}
 
-    def __init__(self, wind_speed_map_model, turbine_locations, render_mode=None, map_size=128, yaw_step=5, max_yaw=30):
+    def __init__(self, wind_speed_map_model, turbine_locations, render_mode=None, map_size=128, max_yaw=30):
         self.turbine_locations = torch.tensor(turbine_locations)
         self.n_turbines = len(turbine_locations)
         self.map_size = map_size
@@ -35,26 +35,24 @@ class TurbineEnv(gym.Env):
         # Extract wind speeds from the map
         self.wind_speed_extractor = WindSpeedExtractor(turbine_locations, map_size)
 
-        self._n_yaw_steps = (max_yaw // yaw_step) + 1
-
         # Define some variables to keep track off
         self._wind_direction = [0]
-        self._yaws = np.zeros(self.n_turbines, dtype=int)
+        self._yaws = np.zeros(self.n_turbines, dtype=float)
 
         # Observations that are available to the agent, the current global wind direction and the current yaw angles
         self.observation_space = spaces.Dict(
             {
                 "wind_direction": gym.spaces.Box(0, 360, dtype=int),
-                "yaws": spaces.MultiDiscrete([2 * self._n_yaw_steps - 1] * self.n_turbines)
+                "yaws": gym.spaces.Box(np.full(10, -1), np.full(10, 1), dtype=float)
             }
         )
 
         # Actions the agents can take, it can select the new yaw angles for the turbines
-        self.action_space = spaces.MultiDiscrete([2 * self._n_yaw_steps - 1] * self.n_turbines)
+        self.action_space = gym.spaces.Box(np.full(10, -1), np.full(10, 1), dtype=float)
 
         # Convert action to an actual yaw angle
-        self._action_to_yaw = lambda action, wind: (action - self._n_yaw_steps) * yaw_step + wind
-        self._yaw_to_action = lambda yaw, wind: (yaw - wind) // yaw_step + self._n_yaw_steps
+        self._action_to_yaw = lambda action, wind: action * max_yaw + wind
+        self._yaw_to_action = lambda yaw, wind: (yaw - wind) / max_yaw
 
         self._last_wind_speed = None
 
@@ -82,13 +80,13 @@ class TurbineEnv(gym.Env):
         if "wind_direction" in options:
             self._wind_direction = options["wind_direction"]
         else: # Else choose a wind direction that is in the data range
-            self._wind_direction = correct_angles(self.np_random.integers(220, 261, size=(1,), dtype=int))
+            self._wind_direction = correct_angles(self.np_random.integers(220, 261, size=(1,)))
 
         # Similarly for yaws
         if "yaws" in options:
             self._yaws = self._yaw_to_action(options["yaws"], self._wind_direction[0])
         else:
-            self._yaws = self.np_random.integers(0, 2 * self._n_yaw_steps - 1, size=self.n_turbines)
+            self._yaws = self.np_random.uniform(-1, 1, size=self.n_turbines)
 
         observation = self._get_obs()
         info = self._get_info()
@@ -168,7 +166,9 @@ def create_env(case=1, max_episode_steps=100, render_mode="matplotlib", map_size
     layout_file = f"../../data/Case_0{case}/HKN_{turbines}_layout_balanced.csv"
     turbine_locations = read_turbine_positions(layout_file)
 
-    env = TimeLimit(TurbineEnv(model, turbine_locations, render_mode=render_mode, map_size=map_size[0]), max_episode_steps=max_episode_steps)
+    env = FlattenObservation(TimeLimit(ContinuousTurbineEnv(model, turbine_locations, render_mode=render_mode,
+                map_size=map_size[0]), max_episode_steps=max_episode_steps))
+
     return env
 
 
@@ -176,7 +176,7 @@ if __name__ == "__main__":
     env = create_env()
 
     wind_direction = np.array([225])
-    yaws = np.array([225] * 10)
+    yaws = np.array([225.0] * 10, dtype=float)
     options = {
         "wind_direction": correct_angles(wind_direction),
         "yaws": correct_angles(yaws)
