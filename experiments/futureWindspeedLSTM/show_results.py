@@ -37,9 +37,10 @@ def get_model_targets(dataset, index, length):
     return torch.cat((targets, next_targets), dim=0)
 
 
-def plot(animate: bool):
+def plot(animate: bool, latest=None):
 
-    latest = "20241015114832_Case01"
+    if latest is None:
+        latest = max(os.listdir("results"))
 
     with open(f"results/{latest}/config.json", "r") as f:
         config = json.load(f)
