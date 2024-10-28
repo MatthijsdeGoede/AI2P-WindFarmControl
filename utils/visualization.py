@@ -94,7 +94,7 @@ def get_mean_absolute_speed_figure(umean_abs, wind_vec, layout_file=None, windmi
     fig, ax = plt.subplots()
 
     add_imshow(fig, ax, umean_abs)
-    add_quiver(ax, wind_vec, umean_abs.shape[0] / 2)
+    add_quiver(ax, wind_vec / 2, umean_abs.shape[0] / 2)
     if windmill_blades:
         add_blades(ax, windmill_blades)
     else:
@@ -113,7 +113,7 @@ def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file=None, windmill_bla
     fig, ax = plt.subplots()
 
     add_imshow(fig, ax, umean_abs)
-    add_quiver(ax, wind_vec, umean_abs.shape[0] / 2)
+    add_quiver(ax, wind_vec / 2, umean_abs.shape[0] / 2)
     if windmill_blades:
         add_blades(ax, windmill_blades)
     else:
@@ -138,7 +138,7 @@ def plot_graph(G, wind_vec, max_angle=90, ax=None):
 
     # Draw wind direction
     wind_start = np.mean(np.array(list(pos_dict.values())), axis=0)
-    scaled_wind_vec = 1000 * wind_vec
+    scaled_wind_vec = 500 * wind_vec
     ax.quiver(wind_start[0], wind_start[1], scaled_wind_vec[0], scaled_wind_vec[1],
               angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
 
@@ -168,7 +168,7 @@ def plot_prediction_vs_real(predicted, target, case=1, number=0):
     add_windmills(axs[1], layout_file)
 
     cbar_ax = fig.add_axes([1.02, 0, 0.02, 1])  # [left, bottom, width, height]
-    cbar = fig.colorbar(img1, cax=cbar_ax, orientation='vertical')
+    fig.colorbar(img1, cax=cbar_ax, orientation='vertical')
 
     # Adjust layout
     plt.tight_layout()
