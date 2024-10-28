@@ -23,7 +23,7 @@ def train():
 
     checkpoint_callback = CheckpointCallback(save_freq=1000, save_path="./models/", name_prefix="sac_model")
 
-    model = SAC(MlpPolicy, env, verbose=1, device=device, tensorboard_log="./sac_tensorboard/")
+    model = SAC(MlpPolicy, env, verbose=1, device=device, tensorboard_log="./tensorboard/")
     model.learn(total_timesteps=500000, progress_bar=True, tb_log_name="SAC",
                 callback=[checkpoint_callback, ntimestep_callback, eval_callback])
     model.save("SACTurbineEnvModel")
@@ -41,4 +41,4 @@ def predict():
 
 if __name__ == "__main__":
     train()
-    predict()
+    # predict()

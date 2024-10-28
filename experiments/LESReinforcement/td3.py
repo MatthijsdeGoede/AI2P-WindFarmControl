@@ -28,8 +28,8 @@ def train():
     n_actions = env.action_space.shape[-1]
     action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
 
-    model = TD3(MlpPolicy, env, action_noise=action_noise, verbose=1, device=device, tensorboard_log="./td3_tensorboard/")
-    model.learn(total_timesteps=200000, progress_bar=True, tb_log_name="TD3",
+    model = TD3(MlpPolicy, env, action_noise=action_noise, verbose=1, device=device, tensorboard_log="./tensorboard/")
+    model.learn(total_timesteps=500000, progress_bar=True, tb_log_name="TD3",
                 callback=[checkpoint_callback, ntimestep_callback, eval_callback])
     model.save("TD3TurbineEnvModel")
 
@@ -47,4 +47,4 @@ def predict():
 
 if __name__ == "__main__":
     train()
-    predict()
+    # predict()

@@ -7,7 +7,7 @@ from utils.extract_windspeed import WindSpeedExtractor
 from utils.preprocessing import read_turbine_positions, get_wind_angles_for_range, correct_angles, read_measurement
 
 
-def create_validation_points(case_nr, num_points, seed=42, map_size=(128, 128)):
+def create_validation_points(case_nr, num_points, seed=42, map_size=(128, 128), return_maps=False):
     points = []
     random.seed(seed)
     data_dir = f"../../data/Case_0{case_nr}"
@@ -36,14 +36,22 @@ def create_validation_points(case_nr, num_points, seed=42, map_size=(128, 128)):
         wake_yaws = all_wake_yaws[:, i].astype(int)
         greedy_map = load_scalars(wake_map_dir, timestep, map_size).reshape(map_size[0], map_size[1])
         wake_map = load_scalars(greedy_map_dir, timestep, map_size).reshape(map_size[0], map_size[1])
+
         # Extract the wind speed for both strategies
         greedy_wind_speed = wind_map_extractor(greedy_map, wind_angle, greedy_yaws)
         wake_wind_speed = wind_map_extractor(wake_map, wind_angle, wake_yaws)
         # Calculate the power for both strategies
         greedy_power = wind_speed_to_power(greedy_yaws, wind_angle, greedy_wind_speed)
         wake_power = wind_speed_to_power(wake_yaws, wind_angle, wake_wind_speed)
-        # Add the new validation point to the set
-        points.append({"wind_direction": wind_angle, "greedy_power": np.sum(greedy_power), "wake_power": np.sum(wake_power)})
+
+        if return_maps:
+            # Return the angle, yaws and resulting maps
+            points.append({"wind_direction": wind_angle, "greedy_yaws": greedy_yaws, "greedy_map": greedy_map,
+                           "wake_yaws": wake_yaws, "wake_map": wake_map, "greedy_power": np.sum(greedy_power), "wake_power": np.sum(wake_power)})
+
+        else:
+            # Add the new validation point to the set
+            points.append({"wind_direction": wind_angle, "greedy_power": np.sum(greedy_power), "wake_power": np.sum(wake_power)})
     return points
 
 

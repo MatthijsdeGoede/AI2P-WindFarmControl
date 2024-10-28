@@ -111,14 +111,27 @@ def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file=None, windmill_bla
     y_axis = y value range of the grid
     """
     fig, ax = plt.subplots()
+    plot_mean_absolute_speed_subplot(ax, umean_abs, wind_vec, layout_file=layout_file, windmill_blades=windmill_blades)
+    plt.show()
 
-    add_imshow(fig, ax, umean_abs)
+
+def plot_mean_absolute_speed_subplot(ax, umean_abs, wind_vec, layout_file=None, windmill_blades=None, color_bar=True):
+    """
+    Plots the mean absolute wind speed on a given axis.
+    Inputs:
+        ax = axis to plot on
+        umean_abs = the absolute wind speed data
+        wind_vec = wind vector data
+        layout_file = file for windmill layout (optional)
+        windmill_blades = blade configuration for windmills (optional)
+    """
+    img = add_imshow(ax.figure, ax, umean_abs, color_bar=color_bar)
     add_quiver(ax, wind_vec / 2, umean_abs.shape[0] / 2)
     if windmill_blades:
         add_blades(ax, windmill_blades)
     else:
         add_windmills(ax, layout_file, umean_abs.shape[0])
-    plt.show()
+    return img
 
 
 def plot_graph(G, wind_vec, max_angle=90, ax=None):

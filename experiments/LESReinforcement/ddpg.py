@@ -24,13 +24,12 @@ def train():
 
     checkpoint_callback = CheckpointCallback(save_freq=1000, save_path="./models/", name_prefix="ddpg_model")
 
-
     # the noise objects for DDPG
     n_actions = env.action_space.shape[-1]
     action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=float(0.5) * np.ones(n_actions))
 
-    model = DDPG(MlpPolicy, env, action_noise=action_noise, verbose=1, device=device, tensorboard_log="./ddpg_tensorboard/")
-    model.learn(total_timesteps=200000, progress_bar=True, tb_log_name="DDPG",
+    model = DDPG(MlpPolicy, env, action_noise=action_noise, verbose=1, device=device, tensorboard_log="./tensorboard/")
+    model.learn(total_timesteps=500000, progress_bar=True, tb_log_name="DDPG",
                 callback=[checkpoint_callback, ntimestep_callback, eval_callback])
     model.save("DDPGTurbineEnvModel")
 
@@ -47,4 +46,4 @@ def predict():
 
 if __name__ == "__main__":
     train()
-    predict()
+    # predict()

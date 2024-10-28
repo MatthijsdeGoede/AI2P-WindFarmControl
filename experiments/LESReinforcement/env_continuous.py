@@ -139,20 +139,20 @@ class ContinuousTurbineEnv(gym.Env):
     def _render_frame(self):
         # Render a wind speed map with current yaws
         # Convert actions to actual yaw values
-        yaws = self._action_to_yaw(self._yaws, self._wind_direction[0])
-
-        wind_speed_map, wind_vec = self.predict_wind_speed_map(yaws)
-
-        turbine_pixels = []
-
-        self.wind_speed_extractor(wind_speed_map, self._wind_direction, yaws, turbine_pixels)
-        wind_vec = 75 * wind_vec
-
+        wind_speed_map, wind_vec, turbine_pixels = self.get_render_info()
         if self.render_mode == "rgb_array":
             plot_mean_absolute_speed(wind_speed_map, wind_vec, windmill_blades=turbine_pixels)
         if self.render_mode == "matplotlib":
             return get_mean_absolute_speed_figure(wind_speed_map, wind_vec, windmill_blades=turbine_pixels)
         return
+
+    def get_render_info(self):
+        yaws = self._action_to_yaw(self._yaws, self._wind_direction[0])
+        wind_speed_map, wind_vec = self.predict_wind_speed_map(yaws)
+        turbine_pixels = []
+        self.wind_speed_extractor(wind_speed_map, self._wind_direction, yaws, turbine_pixels)
+        wind_vec = 75 * wind_vec
+        return wind_speed_map, wind_vec, turbine_pixels
 
 
 def create_env(case=1, max_episode_steps=100, render_mode="matplotlib", map_size=(128, 128)):
