@@ -22,22 +22,20 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
     if frames is None:
         dirs = os.listdir(f'../data/{case}/measurements_flow')
         all_files = [os.listdir(f'../data/{case}/measurements_flow/{dir}/windspeedMapScalars') for dir in dirs]
-        biggest_file = [int(max(filter(lambda file: file != "README.md", files), key=lambda x: int(x.split('.')[0].split('_')[-1])).split('.')[0].split('_')[-1]) for files in all_files]
-        frames = (min(biggest_file) - start)//5 + 1
+        biggest_file = [int(max(filter(lambda file: file != "README.md", files),
+                                key=lambda x: int(x.split('.')[0].split('_')[-1])).split('.')[0].split('_')[-1]) for
+                        files in all_files]
+        frames = (min(biggest_file) - start) // 5 + 1
         print(frames)
 
     images = []
 
     def setup_image(ax, type):
         umean = read_wind_speed_scalars(type, start, case)
-        axes_image = ax.imshow(umean, animated=True)
+        axes_image = ax.imshow(umean, animated=True, vmin=0, vmax=10)
         ax.set_xlabel("Distance (m)")
         ax.set_ylabel("Distance (m)")
         images.append((axes_image, type))
-
-    # fig, (ax1) = plt.subplots(1, 1)
-    #
-    # setup_image(ax1, "BL")
 
     if comparison:
         fig, (ax1, ax2) = plt.subplots(1, 2)
@@ -51,8 +49,6 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
         fig.colorbar(images[0][0], ax=ax1)
 
     def animate(i):
-        # fig.suptitle(f"Interpolated UmeanAbs at Hub-Height\nRuntime of simulation: {5 * i} seconds")
-
         for axes_image, type in images:
             umean_abs = read_wind_speed_scalars(type, start + 5 * i, case)
             axes_image.set_data(umean_abs)
@@ -64,15 +60,16 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
     anim.save(f'./animations/{case}/{start}/{frames}.gif', writer='pillow', progress_callback=progress_callback)
 
 
-def add_windmills(ax, layout_file, image_size=300):
+def add_windmills(ax, layout_file, image_size=128):
     # Create windmill layout
     df = pd.read_csv(layout_file, sep=",", header=None)
-    scale_factor = image_size/5000
+    scale_factor = image_size / 5000
 
     for i, (x, y, z) in enumerate(df.values * scale_factor):
-        circ = Circle((x, y), image_size/60, color='red')
+        circ = Circle((x, y), image_size / 60, color='red')
         ax.add_patch(circ)
         ax.text(x, y, f'{i}', ha='center', va='center')
+
 
 def add_blades(ax, windmill_blades):
     for blade in windmill_blades:
@@ -80,16 +77,18 @@ def add_blades(ax, windmill_blades):
         end = blade[-1]
         ax.add_line(Line2D([start[0], end[0]], [start[1], end[1]], color='red', lw=3))
 
+
 def add_quiver(ax, wind_vec, center):
     ax.quiver(center, center, wind_vec[0], wind_vec[1],
-               angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
+              angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
 
-def add_imshow(fig, ax, umean_abs, color_bar=False):
-    axesImage = ax.imshow(umean_abs, extent=(0, 300, 0, 300), origin='lower', aspect='auto')
-    fig.colorbar(axesImage, ax=ax, label='Mean Velocity (UmeanAbs)')
-    ax.set_xlabel('X-axis')
-    ax.set_ylabel('Y-axis')
+
+def add_imshow(fig, ax, umean_abs, color_bar=True):
+    axesImage = ax.imshow(umean_abs, extent=(0, 128, 0, 128), origin='lower', aspect='equal', vmin=0, vmax=10)
+    if color_bar:
+        fig.colorbar(axesImage, ax=ax, label='Mean Velocity (UmeanAbs)')
     return axesImage
+
 
 def get_mean_absolute_speed_figure(umean_abs, wind_vec, layout_file=None, windmill_blades=None):
     fig, ax = plt.subplots()
@@ -101,6 +100,7 @@ def get_mean_absolute_speed_figure(umean_abs, wind_vec, layout_file=None, windmi
     else:
         add_windmills(ax, layout_file, umean_abs.shape[0])
     return fig
+
 
 def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file=None, windmill_blades=None):
     """"
@@ -151,22 +151,24 @@ def plot_graph(G, wind_vec, max_angle=90, ax=None):
 
 
 def plot_prediction_vs_real(predicted, target, case=1, number=0):
-
     layout_file = get_layout_file(case)
 
     fig, axs = plt.subplots(1, 2, figsize=(12, 6))  # 1 row, 2 columns
 
     # Plot target
-    add_imshow(fig, axs[0], target)
+    img1 = add_imshow(fig, axs[0], target, color_bar=False)
     axs[0].set_title('Target')
     axs[0].set_aspect('equal', adjustable='box')  # Maintain aspect ratio
     add_windmills(axs[0], layout_file)
 
     # Plot predicted
-    add_imshow(fig, axs[1], predicted)
+    add_imshow(fig, axs[1], predicted, color_bar=False)
     axs[1].set_title('Predicted')
     axs[1].set_aspect('equal', adjustable='box')  # Maintain aspect ratio
     add_windmills(axs[1], layout_file)
+
+    cbar_ax = fig.add_axes([1.02, 0, 0.02, 1])  # [left, bottom, width, height]
+    cbar = fig.colorbar(img1, cax=cbar_ax, orientation='vertical')
 
     # Adjust layout
     plt.tight_layout()
@@ -174,9 +176,7 @@ def plot_prediction_vs_real(predicted, target, case=1, number=0):
     plt.show()
 
 
-
 def animate_prediction_vs_real(umean_callback, n_frames=100, file_path="animation"):
-
     fig, axs = plt.subplots(1, 2, figsize=(12, 6))
     target, prediction = umean_callback(0)
     axis_image_target = add_imshow(fig, axs[0], target)

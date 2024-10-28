@@ -15,7 +15,7 @@ def train():
 
     checkpoint_callback = CheckpointCallback(save_freq=1000, save_path="./models/", name_prefix="ppo_model")
 
-    model = PPO("MultiInputPolicy", env, verbose=1, device=device, tensorboard_log="./turbine_env/")
+    model = PPO("MultiInputPolicy", env, verbose=1, device=device, tensorboard_log="./ppo_tensorboard/")
     model.learn(total_timesteps=200000, progress_bar=True, tb_log_name="PPO", callback=[checkpoint_callback, ntimestep_callback])
     model.save("PPOTurbineEnvModel")
 

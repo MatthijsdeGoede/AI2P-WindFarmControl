@@ -1,8 +1,8 @@
 import numpy as np
 import torch
-from stable_baselines3 import TD3
-from stable_baselines3.common.noise import NormalActionNoise
-from stable_baselines3.td3 import MlpPolicy
+from stable_baselines3 import DDPG
+from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
+from stable_baselines3.ddpg.policies import MlpPolicy
 
 from experiments.LESReinforcement.env_continuous import create_env
 from utils.rl_utils import create_validation_points
@@ -22,21 +22,21 @@ def train():
     fig_callback = FigureRecorderCallback(env)
     ntimestep_callback = EveryNTimesteps(n_steps=500, callback=fig_callback)
 
-    checkpoint_callback = CheckpointCallback(save_freq=1000, save_path="./models/", name_prefix="td3_model")
+    checkpoint_callback = CheckpointCallback(save_freq=1000, save_path="./models/", name_prefix="ddpg_model")
 
-    # The noise objects for TD3
+
+    # the noise objects for DDPG
     n_actions = env.action_space.shape[-1]
-    action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
+    action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=float(0.5) * np.ones(n_actions))
 
-    model = TD3(MlpPolicy, env, action_noise=action_noise, verbose=1, device=device, tensorboard_log="./td3_tensorboard/")
-    model.learn(total_timesteps=200000, progress_bar=True, tb_log_name="TD3",
+    model = DDPG(MlpPolicy, env, action_noise=action_noise, verbose=1, device=device, tensorboard_log="./ddpg_tensorboard/")
+    model.learn(total_timesteps=200000, progress_bar=True, tb_log_name="DDPG",
                 callback=[checkpoint_callback, ntimestep_callback, eval_callback])
-    model.save("TD3TurbineEnvModel")
-
+    model.save("DDPGTurbineEnvModel")
 
 def predict():
     env = create_env()
-    model = TD3.load("TD3TurbineEnvModel")
+    model = DDPG.load("DDPGTurbineEnvModel")
 
     for i in range(10):
         obs, info = env.reset()
