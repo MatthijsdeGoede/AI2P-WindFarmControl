@@ -173,7 +173,7 @@ def create_env(case=1, max_episode_steps=100, render_mode="matplotlib", map_size
 
 
 if __name__ == "__main__":
-    env = create_env()
+    env = create_env(render_mode="rgb_array")
 
     wind_direction = np.array([225])
     yaws = np.array([225] * 10)

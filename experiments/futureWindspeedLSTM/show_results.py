@@ -5,7 +5,7 @@ import torch
 import json
 
 from architecture.windspeedLSTM.windspeedLSTM import WindspeedLSTM
-from experiments.futureWindspeedLSTM.WindspeedMapDataset import create_data_loaders, WindspeedMapDataset, get_dataset
+from experiments.futureWindspeedLSTM.WindspeedMapDataset import create_data_loaders, get_dataset
 from utils.preprocessing import resize_windspeed
 from utils.visualization import plot_prediction_vs_real, animate_prediction_vs_real
 
