@@ -21,7 +21,7 @@ class WindSpeedExtractor:
 
         translate = np.arange(start=-self.rotor_diameter_pixels // 2 + 1, stop=self.rotor_diameter_pixels // 2 + 1,
                               step=1)
-        translate = np.stack((np.ones(self.rotor_diameter_pixels) * -4, translate), axis=1)
+        translate = np.stack((np.ones(self.rotor_diameter_pixels) * -2, translate), axis=1)
 
         self.turbine_locations = turbine_locations + translate
 

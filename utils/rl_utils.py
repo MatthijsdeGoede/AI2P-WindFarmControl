@@ -22,7 +22,10 @@ def create_validation_points(case_nr, num_points, seed=42, map_size=(128, 128), 
     data_range = range(30005, 42000 + 1, 5)
     wind_angles = get_wind_angles_for_range(f"{data_dir}/HKN_{turbines}_dir.csv", data_range, 30000)
     sample_range = list(enumerate(data_range))
-    samples = random.sample(sample_range, num_points)
+    if num_points > len(data_range):
+        samples = sample_range
+    else:
+        samples = random.sample(sample_range, num_points)
 
     # Retrieve the yaws for both strategies
     all_greedy_yaws = (read_measurement(greedy_yaw_dir, "nacYaw") * -1 + 270) % 360
