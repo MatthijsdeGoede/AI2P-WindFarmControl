@@ -37,7 +37,7 @@ def get_model_targets(dataset, index, length):
     return torch.cat((targets, next_targets), dim=0)
 
 
-def plot(animate: bool, latest=None):
+def plot(animate: bool, latest=None, start=None):
 
     if latest is None:
         latest = max(os.listdir("results"))
@@ -51,14 +51,14 @@ def plot(animate: bool, latest=None):
     scale = config["scale"]
 
     transform = create_transform(scale)
-    dataset = get_dataset([config["root_dir"]], sequence_length, transform)
-    # dataset = get_dataset(config["dataset_dirs"], sequence_length, transform)
+    # dataset = get_dataset([config["root_dir"]], sequence_length, transform)
+    dataset = get_dataset(config["dataset_dirs"], sequence_length, transform)
 
     train_loader, val_loader, test_loader = create_data_loaders(dataset, batch_size)
     model = WindspeedLSTM(sequence_length).to(device)
 
-    max_epoch = max(os.listdir(f'results/{latest}/model'))
-    model.load_state_dict(torch.load(f"results/{latest}/model/{max_epoch}"))
+    max_epoch = max([int(a.split(".pt")[0]) for a in os.listdir(f'results/{latest}/model')])
+    model.load_state_dict(torch.load(f"results/{latest}/model/{max_epoch}.pt"))
     model.eval()
 
     print(f"results/{latest}/{max_epoch}")
@@ -66,7 +66,8 @@ def plot(animate: bool, latest=None):
     with torch.no_grad():
         if animate:
             animation_length = 45
-            start = np.random.randint(0, max(1, len(dataset) - max(sequence_length, animation_length)))
+            if start is None:
+                start = np.random.randint(0, max(1, len(dataset) - max(sequence_length, animation_length)))
             inputs, _ = dataset[start]
             outputs = make_model_predictions(model, inputs[None, :, :, :], animation_length).squeeze()
             print(f"Outputs.shape: {outputs.shape}")
@@ -79,11 +80,18 @@ def plot(animate: bool, latest=None):
             animate_prediction_vs_real(animate_callback, animation_length, f"results/{latest}")
 
         else:
-            for inputs, targets in test_loader:
-                inputs, targets = inputs.to(device), targets.to(device)
+            if start is None:
+                for inputs, targets in test_loader:
+                    inputs, targets = inputs.to(device), targets.to(device)
+                    output = model(inputs)
+                    plot_prediction_vs_real(output[0, 45, :, :].cpu(), targets[0, 45, :, :].cpu(), case)
+            else:
+                inputs, targets = dataset[start]
+                inputs, targets = inputs.to(device)[None, :, :, :], targets.to(device)[None, :, :, :]
                 output = model(inputs)
                 plot_prediction_vs_real(output[0, 45, :, :].cpu(), targets[0, 45, :, :].cpu(), case)
 
+
 if __name__ == '__main__':
-    plot(True)
-    # plot(True)
+    plot(True, start=0)
+    plot(False, start=0)
