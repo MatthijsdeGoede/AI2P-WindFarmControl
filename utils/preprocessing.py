@@ -152,7 +152,7 @@ def correct_angles(angles):
 
 
 def read_wind_angles(file):
-    angles = np.genfromtxt(file, delimiter=",") * np.array([1, -1]) - np.array([0, 90])
+    angles = np.genfromtxt(file, delimiter=",") * np.array([1, -1]) + np.array([0, 270])
     return np.mod(angles, [np.inf, 360])
 
 
@@ -238,3 +238,14 @@ def read_measurement(folder, measurement):
 
 def resize_windspeed(windspeed_map, output_shape):
     return resize(windspeed_map, output_shape)
+
+
+def get_yaws(case, type):
+    yaws = read_measurement(f"../data/Case_0{case}/measurements_turbines/30000_{type}/", "nacYaw")
+
+    turbines = "12_to_15" if case == 1 else "06_to_09" if case == 2 else "00_to_03"
+    wind_angles = read_wind_angles(f"../data/Case_0{case}/HKN_{turbines}_dir.csv")
+    x_interp = np.linspace(5, 12000, yaws.shape[1], endpoint=True)
+    y_interp = np.interp(x_interp, wind_angles[:, 0], wind_angles[:, 1])
+
+    return (yaws * -1 + 270) - y_interp
