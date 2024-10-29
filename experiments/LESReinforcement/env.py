@@ -48,6 +48,7 @@ class TurbineEnv(gym.Env):
                 "yaws": spaces.MultiDiscrete([2 * self._n_yaw_steps - 1] * self.n_turbines)
             }
         )
+        # self.observation_space = spaces.Box(0, 360, dtype=int)
 
         # Actions the agents can take, it can select the new yaw angles for the turbines
         self.action_space = spaces.MultiDiscrete([2 * self._n_yaw_steps - 1] * self.n_turbines)
@@ -66,6 +67,7 @@ class TurbineEnv(gym.Env):
             "wind_direction": self._wind_direction,
             "yaws": self._yaws,
         }
+        # return self._wind_direction
 
     def _get_info(self):
         return {
@@ -102,7 +104,7 @@ class TurbineEnv(gym.Env):
 
         # Use the graph model to create a wind speed map prediction
         wind_speed_map, _ = self.predict_wind_speed_map(yaws)
-        self._last_wind_speed = self.wind_speed_extractor(wind_speed_map, self._wind_direction, yaws)
+        self._last_wind_speed = self.wind_speed_extractor(wind_speed_map, self._wind_direction[0], yaws)
 
         # Convert the extracted wind speeds at the turbines to power
         power = wind_speed_to_power(yaws, self._wind_direction[0], self._last_wind_speed)
@@ -155,6 +157,14 @@ class TurbineEnv(gym.Env):
         if self.render_mode == "matplotlib":
             return get_mean_absolute_speed_figure(wind_speed_map, wind_vec, windmill_blades=turbine_pixels)
         return
+
+    def get_render_info(self):
+        yaws = self._action_to_yaw(self._yaws, self._wind_direction[0])
+        wind_speed_map, wind_vec = self.predict_wind_speed_map(yaws)
+        turbine_pixels = []
+        self.wind_speed_extractor(wind_speed_map, self._wind_direction[0], yaws, turbine_pixels)
+        wind_vec = 75 * wind_vec
+        return wind_speed_map, wind_vec, turbine_pixels
 
 
 def create_env(case=1, max_episode_steps=100, render_mode="matplotlib", map_size=(128, 128)):
