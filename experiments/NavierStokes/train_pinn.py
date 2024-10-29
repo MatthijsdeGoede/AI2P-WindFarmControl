@@ -1,5 +1,6 @@
 import re
 import os
+import shutil
 import argparse
 from collections import defaultdict
 
@@ -11,8 +12,8 @@ import numpy as np
 from tqdm import tqdm
 
 from PINN import PINN
-from GridDataset import GridDataset
-from IncNSLoss import NSLoss
+from GridDataset3D import GridDataset
+from NDNSLoss import NSLoss
 
 
 assert torch.cuda.is_available()
@@ -20,30 +21,32 @@ assert torch.cuda.is_available()
 generator = torch.Generator()
 generator.manual_seed(42)
 
+#Choosen 1/9.6 because after non dimensionalization time has a 
+#range of (-9.6, 9.6). This makes it (-1, 1).
+TIME_SCALING_FACTOR = 1/9.6
 
-def load_data():
+def load_data(use_sampling: bool):
     dataset = GridDataset(dir="data/Case_01/measurements_flow/postProcessing_BL/winSpeedMapVector/",
                         turbine_csv="data/Case_01/measurements_turbines/30000_BL/rot_yaw_combined.csv",
                         wind_csv="data/Case_01/winDir_processed.csv", 
                         data_type="wake", 
                         wake_dir="data/Case_01/measurements_flow/postProcessing_LuT2deg_internal/winSpeedMapVector/",
                         wake_turbine_csv="data/Case_01/measurements_turbines/30000_LuT2deg_internal/rot_yaw_combined.csv",
-                        only_grid_values=False,
-                        sampling=True,
-                        samples_per_grid=128,
-                        top_vorticity=0.80)
-
-    MIN_TIME, MAX_TIME = dataset[0][0][:, 2][0].item(), dataset[-1][0][:, 2][0].item()
+                        sampling=use_sampling,
+                        samples_per_grid=256,
+                        top_vorticity=0.80, 
+                        time_scaling_factor=TIME_SCALING_FACTOR)
 
     train, val, _ = random_split(dataset, [0.6, 0.2, 0.2], generator=generator)
 
-    train_loader = DataLoader(train, batch_size=16, shuffle=True, num_workers=4, persistent_workers=True)
-    val_loader = DataLoader(val, batch_size=16, shuffle=True, num_workers=4, persistent_workers=True)
+    batch_size = 16 if use_sampling else 1
+    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=4, persistent_workers=True)
+    val_loader = DataLoader(val, batch_size=batch_size, shuffle=True, num_workers=4, persistent_workers=True)
 
-    return train_loader, val_loader, MIN_TIME, MAX_TIME
+    return train_loader, val_loader
 
 
-def load_model_optimizer(model, optimizer, model_save_path):
+def load_model_optimizer(model: PINN, optimizer: torch.optim.Optimizer, model_save_path: str):
     """
     Loads the latest model of the last training and modifies the model and
     optimizer in place
@@ -65,30 +68,28 @@ def load_model_optimizer(model, optimizer, model_save_path):
 def main(physics_coef: float, 
         hidden_size: int, 
         depth: int,
-        tanh: bool, 
+        relu: bool, 
         use_checkpoint: bool, 
+        use_sampling: bool,
         model_save_path: str, 
-        writer
-    ):
+        writer):
 
-    train_loader, val_loader, MIN_TIME, MAX_TIME = load_data()
-    RANGE_TIME = MAX_TIME - MIN_TIME
-    AVG_TIME = (MAX_TIME + MIN_TIME) / 2
+    train_loader, val_loader = load_data(use_sampling)
 
-    model = PINN(in_dimensions=35, hidden_size=hidden_size, nr_hidden_layer=depth, out_dimensions=4, tanh_activation=tanh).cuda()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    criterion = NSLoss(physics_coef=physics_coef)
+    model = PINN(in_dimensions=26, hidden_size=hidden_size, nr_hidden_layer=depth, out_dimensions=4, relu_activation=relu).cuda()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)
+    criterion = NSLoss(physics_coef=physics_coef, time_scaling_factor=TIME_SCALING_FACTOR)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 
-                                                           patience=20,
+                                                           patience=25,
                                                            factor=0.1,
                                                            threshold=1e-3,
-                                                           min_lr=1e-7)    
+                                                           min_lr=1e-5)    
 
     train_losses = defaultdict(list)
     val_losses = defaultdict(list)
 
     start_epoch = 0
-    end_epoch = 100
+    end_epoch = 300
     if (use_checkpoint):
         start_epoch, train_losses, val_losses = load_model_optimizer(model, optimizer, model_save_path)
         end_epoch += start_epoch
@@ -108,22 +109,19 @@ def main(physics_coef: float,
         for inputs, targets in train_loader:
             inputs = inputs.flatten(0, 1).float().cuda(non_blocking=True)
             targets = targets.flatten(0, 1).float().cuda(non_blocking=True)
-
-            #normalizing to (-3, 3)
-            inputs[:, 2] = (inputs[:, 2] - AVG_TIME) / (RANGE_TIME / 6)
                 
             optimizer.zero_grad()
             outputs, input_coords = model(inputs)
             loss, data_loss, physics_loss = criterion(input_coords, outputs, targets)
 
-            physics_loss.backward(retain_graph=True)
-            physics_grad_magnitude = torch.nn.utils.clip_grad_norm_(model.parameters(), 1000000).item()
-            optimizer.zero_grad()
+            # physics_loss.backward(retain_graph=True)
+            # physics_grad_magnitude = torch.nn.utils.clip_grad_norm_(model.parameters(), 1000000).item()
+            # optimizer.zero_grad()
 
-            data_loss.backward(retain_graph=True)
-            data_grad_magnitude = torch.nn.utils.clip_grad_norm_(model.parameters(), 1000000).item()
-            optimizer.zero_grad()
-                
+            # data_loss.backward(retain_graph=True)
+            # data_grad_magnitude = torch.nn.utils.clip_grad_norm_(model.parameters(), 1000000).item()
+            # optimizer.zero_grad()
+
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 2.0)
             optimizer.step()
@@ -131,17 +129,17 @@ def main(physics_coef: float,
             running_train_losses['total'].append(loss.item())
             running_train_losses['data'].append(data_loss.item())
             running_train_losses['physics'].append(physics_loss.item())
-            running_train_losses['physics_grad'].append(physics_grad_magnitude)
-            running_train_losses['data_grad'].append(data_grad_magnitude)
+            # running_train_losses['physics_grad'].append(physics_grad_magnitude)
+            # running_train_losses['data_grad'].append(data_grad_magnitude)
             
         train_losses['total'].append(np.mean(running_train_losses['total']))
         train_losses['data'].append(np.mean(running_train_losses['data']))
         train_losses['physics'].append(np.mean(running_train_losses['physics']))
 
         writer.add_scalar("Train - Loss", np.mean(running_train_losses['total']), epoch)
-        writer.add_scalar("Train - Physics", np.mean(running_train_losses['physics']), epoch)
-        writer.add_scalar("Physics Gradient Magnitude", np.mean(running_train_losses['physics_grad']), epoch)
-        writer.add_scalar("Data Gradient Magnitude", np.mean(running_train_losses['data_grad']), epoch)        
+        if (physics_coef > 1e-6): writer.add_scalar("Train - Physics", np.mean(running_train_losses['physics']), epoch)
+        # writer.add_scalar("Physics Gradient Magnitude", np.mean(running_train_losses['physics_grad']), epoch)
+        # writer.add_scalar("Data Gradient Magnitude", np.mean(running_train_losses['data_grad']), epoch)        
 
         model.eval()
         running_val_losses = defaultdict(list)
@@ -149,8 +147,6 @@ def main(physics_coef: float,
         for inputs, targets in val_loader:
             inputs = inputs.flatten(0, 1).float().cuda(non_blocking=True)
             targets = targets.flatten(0, 1).float().cuda(non_blocking=True)
-
-            inputs[:, 2] = (inputs[:, 2] - AVG_TIME) / (RANGE_TIME / 6)
 
             outputs, input_coords = model(inputs)
             loss, data_loss, physics_loss = criterion(input_coords, outputs, targets)
@@ -168,7 +164,7 @@ def main(physics_coef: float,
         last_lr = scheduler.get_last_lr()[0]
 
         writer.add_scalar("Validation - Loss", np.mean(running_val_losses['total']), epoch)
-        writer.add_scalar("Validation - Physics", np.mean(running_val_losses['physics']), epoch)
+        if (physics_coef > 1e-6): writer.add_scalar("Validation - Physics", np.mean(running_val_losses['physics']), epoch)
         writer.add_scalar("Learning Rate", last_lr, epoch)
 
         if (epoch % 10 == 0):
@@ -179,8 +175,8 @@ def main(physics_coef: float,
                         writer.add_histogram(f"Layer {nr_layer} - Weights", layer.weight.data.flatten(), epoch)
                         nr_layer += 1
 
-        # print(f"Epoch: {epoch} - Train Losses: {train_losses['total'][-1]:.4f}, {train_losses['physics'][-1]*criterion.physics_coef:.4f} - \
-        #     Val Losses: {val_losses['total'][-1]:.4f}, {val_losses['physics'][-1]*criterion.physics_coef:.4f}")
+        print(f"Epoch: {epoch} - Train Losses: {train_losses['total'][-1]:.4f}, {train_losses['physics'][-1]*criterion.physics_coef:.4f} - \
+            Val Losses: {val_losses['total'][-1]:.4f}, {val_losses['physics'][-1]*criterion.physics_coef:.4f}")
         
 
         torch.save({
@@ -197,25 +193,30 @@ if __name__ == "__main__":
     parser.add_argument("--physics", type=float, default=10, help="Physics loss multiplier")
     parser.add_argument("--hidden-size", type=int, default=128)
     parser.add_argument("--depth", type=int, default=5)
-    parser.add_argument("--tanh", type=bool, default=False, action=argparse.BooleanOptionalAction)
-    #possible options are: wake, no-wake, both
+    parser.add_argument("--relu", type=bool, default=False, action=argparse.BooleanOptionalAction)
     parser.add_argument("--use-checkpoint", type=bool, default=False, action=argparse.BooleanOptionalAction)
-    #Allowing this option overrides --physics argument
     parser.add_argument("--save-path", type=str, default=None)
+    parser.add_argument("--use-sampling", type=bool, default=False, action=argparse.BooleanOptionalAction)
 
     args = parser.parse_args()
 
     physics = args.physics
-    model_type = "Tanh" if args.tanh else "SiLU"
-    model_save_path = f"models/{model_type}{args.hidden_size}-d{args.depth}-p{args.physics}"
+    model_type = "ReLU" if args.relu else "SiLU"
+    model_save_path = f"models2/{model_type}{args.hidden_size}-d{args.depth}-p{args.physics}-{'s' if args.use_sampling else 'f'}"
 
     if (args.save_path):
         model_save_path = args.save_path
 
     os.makedirs(model_save_path, exist_ok=True)
 
-    writer = SummaryWriter(f"runs/{model_type}{args.hidden_size}-d{args.depth}-p{args.physics}", flush_secs=30)
+    run_dir = f"runs/{model_type}{args.hidden_size}-d{args.depth}-p{args.physics}-{'s' if args.use_sampling else 'f'}"
+    writer = SummaryWriter(run_dir, flush_secs=30)
 
-    try: main(physics, args.hidden_size, args.depth, args.tanh, args.use_checkpoint, model_save_path, writer)
-    except: pass
+    try: 
+        main(physics, args.hidden_size, args.depth, args.relu, args.use_checkpoint, args.use_sampling, model_save_path, writer)
+
+    except KeyboardInterrupt:
+        delete = input("Delete tensorboard logs? (y/n) ")
+        if (delete == 'y'): shutil.rmtree(run_dir)
+        
     finally: writer.close()

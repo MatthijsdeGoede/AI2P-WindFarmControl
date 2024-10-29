@@ -6,6 +6,14 @@ animations/*
 /data/**/*.npy
 /data/**/*.vtk
 
+#Pytorch models
+*.pt
+
+#Tensorboard logs
+/runs
+
+figures/
+
 # Don't store the measurements at the turbines, that don't have a file extension
 /data/*/measurements_turbines/*/*
 # But do include the README file in that folder

@@ -7,39 +7,39 @@ import numpy as np
 import pandas as pd
 
 
+L = 5000 #Characterestic length in meters. Choosen 5000 because it's the simulation area
+U = 8 #Characteristic velocity in meters per second. Choosen by assuming the free stream velocity is 8 m/s
+HUB_HEIGHT = 119 #Height of the turbine in meters
+
+
 class GridDataset(Dataset):
     def __init__(self, dir, 
                 turbine_csv, 
                 wind_csv, 
-                data_type="no-wake", 
+                data_type="wake", 
                 wake_dir=None, 
                 wake_turbine_csv=None, 
-                only_grid_values=False, 
                 sampling=False, 
                 samples_per_grid=128, 
                 top_vorticity=0.80,
-                time_scaling_factor=1e-3,
-                distance_scaling_factor=1e-3,
-                scaling_strictly_positive=False):
+                time_scaling_factor = 1.0):
         
         super().__init__()
 
         self.datasets = []
         self.data_type = data_type
 
-        self.time_scaling_factor=time_scaling_factor
-        self.distance_scaling_factor=distance_scaling_factor
-        self.scaling_strictly_positive=scaling_strictly_positive
+        self.time_scaling_factor = time_scaling_factor
 
         if (self.data_type == "no-wake"):
-            self.datasets.append(CaseDataset(dir, turbine_csv, wind_csv, only_grid_values, sampling, samples_per_grid, top_vorticity))
+            self.datasets.append(CaseDataset(dir, turbine_csv, wind_csv, sampling, samples_per_grid, top_vorticity))
 
         elif (self.data_type == "wake"):
-            self.datasets.append(CaseDataset(wake_dir, wake_turbine_csv, wind_csv, only_grid_values, sampling, samples_per_grid, top_vorticity))
+            self.datasets.append(CaseDataset(wake_dir, wake_turbine_csv, wind_csv, sampling, samples_per_grid, top_vorticity))
 
         elif (self.data_type == "both"):
-            self.datasets.append(CaseDataset(dir, turbine_csv, wind_csv, only_grid_values, sampling, samples_per_grid, top_vorticity))
-            self.datasets.append(CaseDataset(wake_dir, wake_turbine_csv, wind_csv, only_grid_values, sampling, samples_per_grid, top_vorticity))
+            self.datasets.append(CaseDataset(dir, turbine_csv, wind_csv, sampling, samples_per_grid, top_vorticity))
+            self.datasets.append(CaseDataset(wake_dir, wake_turbine_csv, wind_csv, sampling, samples_per_grid, top_vorticity))
             
         else:
             raise ValueError(f"data_type must be no-wake, wake, or both. was given: {self.data_type}")
@@ -49,35 +49,38 @@ class GridDataset(Dataset):
         return sum([len(x) for x in self.datasets])
     
 
-    def _rescale_inputs(self, inputs: torch.Tensor):
+    def _non_dimensionalize_inputs(self, inputs: torch.Tensor):
         """
         The first two columns of the input is x-y coordinates of a 300x300 grid. The original simulation is
-        performed over a 5000m x 5000m area. First let's convert the grid indices to distances and then rescale it.
+        performed over a 5000m x 5000m area. First let's convert the grid indices to distances and then non dimensionalize it.
 
-        The third column is time in seconds. The simulation starts at time = 30.000s and continues for 12.000 seconds
+        Third column is the hub height. However, this is in meters already so we don't have convert it, only non dimensionalize it.
 
-        Strictly positive determines if the inputs are scaled to (-x, x) (False) or (0, x) (True).
+        The fourth column is time in seconds. The simulation starts at time = 30.000s and continues for 12.000 seconds
 
-        e.g., given scaling factor of 1/1000, coordinates are in range (0, 5) and time is in range (0, 12)
+        The inputs are scaled to (-x, x).
         """
         inputs_ = inputs.detach().clone()
 
-        inputs_[:, :2] = inputs_[:, :2] * (5000/300)
-        inputs_[:, 2] = inputs_[:, 2] - 30000
+        inputs_[:, 0] = inputs_[:, 0] * (5000/300)
+        inputs_[:, 1] = inputs_[:, 1] * (5000/300)
+        inputs_[:, 3] = inputs_[:, 3] - 30000
 
-        inputs_[:, :2] = inputs_[:, :2] * self.distance_scaling_factor
-        inputs_[:, 2] = inputs_[:, 2] * self.time_scaling_factor
-
-        if (self.scaling_strictly_positive):
-            return inputs_
+        inputs_[:, :3] = inputs_[:, :3] / L
+        inputs_[:, 3] = inputs_[:, 3] * U / L
         
-        mean_distance = (5000 * self.distance_scaling_factor) / 2
-        mean_time = (12000 * self.time_scaling_factor) / 2
+        mean_distance = (5000 / L) / 2
+        mean_time = (12000 * U / L) / 2
 
-        inputs_[:, :2] = inputs_[:, :2] - mean_distance
-        inputs_[:, 2] = inputs_[:, 2] - mean_time
+        inputs_[:, :3] = inputs_[:, :3] - mean_distance
+        inputs_[:, 3] = (inputs_[:, 3] - mean_time) * self.time_scaling_factor
 
         return inputs_
+    
+    def _non_dimensionalize_targets(self, targets: torch.Tensor):
+        targets_ = targets.detach().clone()
+        targets_ = targets_ / U
+        return targets_
     
 
     def is_index_wake_steering(self, index):    
@@ -95,11 +98,11 @@ class GridDataset(Dataset):
             is_wake_steering, index = self.is_index_wake_steering(index)
             out = self.datasets[1][index] if is_wake_steering else self.datasets[0][index]
 
-        return self._rescale_inputs(out[0]), out[1]
+        return self._non_dimensionalize_inputs(out[0]), self._non_dimensionalize_targets(out[1])
 
 
 class CaseDataset(Dataset):
-    def __init__(self, dir, turbine_csv, wind_csv, only_grid_values=False, sampling=False, samples_per_grid=256, top_vorticity=0.8):
+    def __init__(self, dir, turbine_csv, wind_csv, sampling=False, samples_per_grid=256, top_vorticity=0.8):
         super().__init__()
 
         self.dir = dir
@@ -109,13 +112,12 @@ class CaseDataset(Dataset):
             self.files.remove("README.md")
         except:
             pass
-
-        self.only_grid_values = only_grid_values
         
         flat_index = torch.arange(90000)
         x_coords = flat_index % 300
         y_coords = flat_index // 300
-        self.coords = torch.stack([x_coords, y_coords]).T
+        z_coords = torch.full((90000,), HUB_HEIGHT)
+        self.coords = torch.stack([x_coords, y_coords, z_coords]).T
 
         self.df_turbines = pd.read_csv(turbine_csv, index_col=0)
         self.df_wind = pd.read_csv(wind_csv, index_col=0)
@@ -194,13 +196,6 @@ class CaseDataset(Dataset):
 
             time = int(self.files[index].split(".")[0])
             time_tensor = torch.full((self.coords.shape[0], 1), time)
-
-            if (self.only_grid_values):
-                inputs = torch.concat((self.coords, time_tensor), dim=1)
-                if (self.sampling):
-                    return inputs[indices], flow_field[indices]
-                
-                return inputs, flow_field
 
             turbine_data = self.get_turbine_data(time)
             turbine_data = turbine_data.repeat(time_tensor.shape[0], 1)
