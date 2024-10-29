@@ -149,7 +149,7 @@ class TurbineEnv(gym.Env):
 
         turbine_pixels = []
 
-        self.wind_speed_extractor(wind_speed_map, self._wind_direction, yaws, turbine_pixels)
+        self.wind_speed_extractor(wind_speed_map, self._wind_direction[0], yaws, turbine_pixels)
         wind_vec = 75 * wind_vec
 
         if self.render_mode == "rgb_array":
