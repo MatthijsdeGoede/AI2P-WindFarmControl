@@ -33,7 +33,7 @@ class WindSpeedExtractor:
         p = np.atleast_2d(p)
         return np.squeeze((R @ (p.T - o.T) + o.T).T)
 
-    def __call__(self, wind_speed_map, wind_angle, yaw_angles, location_pixels=None):
+    def __call__(self, wind_speed_map, yaw_angles, location_pixels=None):
 
         wind_speeds_at_turbine = np.empty((self.n_turbines, self.rotor_diameter_pixels))
 
