@@ -21,11 +21,17 @@ class WindSpeedExtractor:
 
         translate = np.arange(start=-self.rotor_diameter_pixels // 2 + 1, stop=self.rotor_diameter_pixels // 2 + 1,
                               step=1)
-        translate = np.stack((np.ones(self.rotor_diameter_pixels) * -2, translate), axis=1)
+        translate = np.stack((np.ones(self.rotor_diameter_pixels) * -4, translate), axis=1)
 
         self.turbine_locations = turbine_locations + translate
 
+        x = np.linspace(0, np.pi, self.rotor_diameter_pixels)
+        self.weights = np.sin(x)
+
     def rotate(self, p, origin=(0, 0), degrees=0):
+        assert not isinstance(degrees, np.ndarray), f"degrees should not be a ndarray, got {type(degrees)}"
+        # if not isinstance(degrees, np.float64):
+        #     print("Oh no")
         angle = np.deg2rad(degrees)
         R = np.array([[np.cos(angle), -np.sin(angle)],
                       [np.sin(angle), np.cos(angle)]])
@@ -39,13 +45,13 @@ class WindSpeedExtractor:
 
         for i, turbine_location in enumerate(self.turbine_locations):
             rotated = self.rotate(turbine_location, origin=self.turbine_location_centers[i],
-                                  degrees=yaw_angles[i]).astype(int)
+                                  degrees=wind_angle).astype(int)
 
             if location_pixels is not None:
                 location_pixels.append(rotated)
 
             wind_speeds_at_turbine[i] = np.array([wind_speed_map[index[1], index[0]] for index in rotated])
 
-        means = np.mean(wind_speeds_at_turbine, axis=1)
+        means = np.average(wind_speeds_at_turbine, axis=1, weights=self.weights)
 
         return means
