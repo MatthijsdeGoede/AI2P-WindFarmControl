@@ -52,7 +52,7 @@ class WindSpeedExtractor:
 
             if location_pixels is not None:
                 location_pix = self.rotate(turbine_location, origin=self.turbine_location_centers[i],
-                                           degrees=yaw_angles[i]).astype(int)
+                                  degrees=yaw_angles[i]).astype(int)
                 location_pix = (location_pix + translation).astype(int)
                 location_pixels.append(location_pix)
 
