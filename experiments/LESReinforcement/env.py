@@ -102,7 +102,7 @@ class TurbineEnv(gym.Env):
 
         # Use the graph model to create a wind speed map prediction
         wind_speed_map, _ = self.predict_wind_speed_map(yaws)
-        self._last_wind_speed = self.wind_speed_extractor(wind_speed_map, self._wind_direction, yaws)
+        self._last_wind_speed = self.wind_speed_extractor(wind_speed_map, self._wind_direction[0], yaws)
 
         # Convert the extracted wind speeds at the turbines to power
         power = wind_speed_to_power(yaws, self._wind_direction[0], self._last_wind_speed)

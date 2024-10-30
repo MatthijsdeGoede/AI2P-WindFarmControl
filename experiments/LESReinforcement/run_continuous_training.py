@@ -4,5 +4,5 @@ from td3 import train as td3_train
 
 
 sac_train()
-td3_train()
 ddpg_train()
+td3_train()
