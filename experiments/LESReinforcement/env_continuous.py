@@ -100,7 +100,7 @@ class ContinuousTurbineEnv(gym.Env):
 
         # Use the graph model to create a wind speed map prediction
         wind_speed_map, _ = self.predict_wind_speed_map(yaws)
-        self._last_wind_speed = self.wind_speed_extractor(wind_speed_map, self._wind_direction, yaws)
+        self._last_wind_speed = self.wind_speed_extractor(wind_speed_map, self._wind_direction[0], yaws)
 
         # Convert the extracted wind speeds at the turbines to power
         power = wind_speed_to_power(yaws, self._wind_direction[0], self._last_wind_speed)
@@ -150,7 +150,7 @@ class ContinuousTurbineEnv(gym.Env):
         yaws = self._action_to_yaw(self._yaws, self._wind_direction[0])
         wind_speed_map, wind_vec = self.predict_wind_speed_map(yaws)
         turbine_pixels = []
-        self.wind_speed_extractor(wind_speed_map, self._wind_direction, yaws, turbine_pixels)
+        self.wind_speed_extractor(wind_speed_map, self._wind_direction[0], yaws, turbine_pixels)
         wind_vec = 75 * wind_vec
         return wind_speed_map, wind_vec, turbine_pixels
 
@@ -173,7 +173,7 @@ def create_env(case=1, max_episode_steps=100, render_mode="matplotlib", map_size
 
 
 if __name__ == "__main__":
-    env = create_env()
+    env = create_env(render_mode="rgb_array")
 
     wind_direction = np.array([225])
     yaws = np.array([225.0] * 10, dtype=float)

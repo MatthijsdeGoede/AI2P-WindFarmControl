@@ -29,7 +29,7 @@ def train():
     action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=float(0.5) * np.ones(n_actions))
 
     model = DDPG(MlpPolicy, env, action_noise=action_noise, verbose=1, device=device, tensorboard_log="./tensorboard/")
-    model.learn(total_timesteps=500000, progress_bar=True, tb_log_name="DDPG",
+    model.learn(total_timesteps=300000, progress_bar=True, tb_log_name="DDPG",
                 callback=[checkpoint_callback, ntimestep_callback, eval_callback])
     model.save("DDPGTurbineEnvModel")
 

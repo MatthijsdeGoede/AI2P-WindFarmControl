@@ -5,6 +5,7 @@ from skimage.transform import resize
 
 from utils.extract_windspeed import WindSpeedExtractor
 from utils.preprocessing import read_turbine_positions, get_wind_angles_for_range, correct_angles, read_measurement
+from utils.visualization import plot_prediction_vs_real
 
 
 def create_validation_points(case_nr, num_points, seed=42, map_size=(128, 128), return_maps=False):
@@ -62,7 +63,7 @@ def wind_speed_to_power(yaws, wind_direction, wind_speed):
     diff_yaw = np.deg2rad(yaws - wind_direction)
     Pp = 2
     Cp = np.cos(diff_yaw) ** Pp
-    return (wind_speed ** 3) * Cp
+    return (wind_speed ** 3) * Cp #/ 512
 
 
 def load_scalars(dir, timestep, map_size):
