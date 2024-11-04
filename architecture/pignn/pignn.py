@@ -17,15 +17,11 @@ class PowerPIGNN(nn.Module):
                  n_pign_layers: int = 3,
                  residual: bool = True,
                  input_norm: bool = True,
-                 pign_mlp_params: dict = None,
-                 reg_mlp_params: dict = None):
+                 pign_mlp_params: dict = None,):
         super(PowerPIGNN, self).__init__()
 
         if pign_mlp_params is None:
             pign_mlp_params = {'num_neurons': [256, 128], 'hidden_act': 'ReLU', 'out_act': 'ReLU'}
-
-        if reg_mlp_params is None:
-            reg_mlp_params = {'num_neurons': [64, 32, 16], 'hidden_act': 'ReLU', 'out_act': 'ReLU'}
 
         edge_in_dims = [edge_in_dim] + n_pign_layers * [edge_hidden_dim]
         edge_out_dims = n_pign_layers * [edge_hidden_dim] + [edge_hidden_dim]
@@ -51,9 +47,6 @@ class PowerPIGNN(nn.Module):
             gm = MLP(gi + eo + no, go, input_norm=_input_norm, **pign_mlp_params)
             layer = PIGN(em, nm, gm, residual=_residual, use_attention=use_attention)
             self.gn_layers.append(layer)
-
-        # regression layer : convert the node embedding to power predictions
-        # self.reg = MLP(node_hidden_dim, output_dim, **reg_mlp_params)
 
     def _forward_graph(self, data, nf, ef, gf):
         unf, uef, ug = nf, ef, gf

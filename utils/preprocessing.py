@@ -11,8 +11,6 @@ from scipy.interpolate import griddata
 
 from skimage.transform import resize
 
-# from utils.timing import start_timer, print_timer
-
 
 class MultiThread:
     def __init__(self, case, type):

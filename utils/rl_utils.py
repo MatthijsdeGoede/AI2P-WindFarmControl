@@ -4,8 +4,7 @@ import numpy as np
 from skimage.transform import resize
 
 from utils.extract_windspeed import WindSpeedExtractor
-from utils.preprocessing import read_turbine_positions, get_wind_angles_for_range, correct_angles, read_measurement
-from utils.visualization import plot_prediction_vs_real
+from utils.preprocessing import read_turbine_positions, get_wind_angles_for_range, read_measurement
 
 
 def create_validation_points(case_nr, num_points, seed=42, map_size=(128, 128), return_maps=False):

@@ -93,7 +93,4 @@ class TestComparisonCallback(BaseCallback):
         self.logger.record("evaluation/avg_model_steering_power", mean_steering_power)
         self.logger.record("evaluation/avg_sim_greedy_power", self.avg_sim_greedy_power)
         self.logger.record("evaluation/avg_sim_steering_power", self.avg_sim_steering_power)
-
-        # print(f"avg greedy power (model, sim): ({mean_greedy_power}, {self.avg_sim_greedy_power})")
-        # print(f"avg steering power (model, sim): {mean_steering_power}, {self.avg_sim_steering_power}")
         return True

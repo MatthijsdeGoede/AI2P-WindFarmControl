@@ -15,7 +15,7 @@ from torch.utils.data import random_split, ConcatDataset
 
 from architecture.pignn.pignn import FlowPIGNN
 from architecture.pignn.deconv import FCDeConvNet, DeConvNet
-from architecture.windspeedLSTM.windspeedLSTM import WindspeedLSTM, WindSpeedLSTMDeConv
+from architecture.lstm.wind_speed_lstm import WindSpeedLSTM, WindSpeedLSTMDeConv
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 generator = torch.Generator()
@@ -377,7 +377,7 @@ def run(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length
 
     if is_temporal:
         temporal_model = WindSpeedLSTMDeConv(seq_length, [64, 128, 256, 1], output_size).to(
-            device) if is_direct_lstm else WindspeedLSTM(seq_length).to(device)
+            device) if is_direct_lstm else WindSpeedLSTM(seq_length).to(device)
         embedding_size = (50, 10) if is_direct_lstm else out_size
         train_temporal(graph_model, temporal_model, train_cfg, train_loader, val_loader, output_folder, embedding_size, out_size)
     else:
@@ -385,26 +385,16 @@ def run(case_nr=1, wake_steering=False, max_angle=30, use_graph=True, seq_length
 
 
 if __name__ == "__main__":
-    # parser = argparse.ArgumentParser(description='Run experiments with different configurations.')
-    # parser.add_argument('--case_nr', type=int, default=1, help='Case number to use for the experiment (default: 1)')
-    # parser.add_argument('--wake_steering', action='store_true', help='Enable wake steering (default: False)')
-    # parser.add_argument('--max_angle', type=int, default=30, help='Maximum angle for the experiment (default: 30)')
-    # parser.add_argument('--use_graph', action='store_true', help='Use graph representation (default: False)')
-    # parser.add_argument('--seq_length', type=int, default=1, help='Sequence length for the experiment (default: 1)')
-    # parser.add_argument('--batch_size', type=int, default=64, help='Batch size for the experiment (default: 64)')
-    # parser.add_argument('--direct_lstm', action='store_true', help='Feed the PIGNN output directly to the LSTM (default: False)')
-    # parser.add_argument('--use_all_data', action='store_true', help='Use all available training data (default: False)')
-    # args = parser.parse_args()
-    #
-    # run(case_nr=args.case_nr, wake_steering=args.wake_steering, max_angle=args.max_angle, use_graph=args.use_graph,
-    # seq_length=args.seq_length, batch_size=args.batch_size, direct_lstm=args.direct_lstm, use_all_data=args.use_all_data)
+    parser = argparse.ArgumentParser(description='Run experiments with different configurations.')
+    parser.add_argument('--case_nr', type=int, default=1, help='Case number to use for the experiment (default: 1)')
+    parser.add_argument('--wake_steering', action='store_true', help='Enable wake steering (default: False)')
+    parser.add_argument('--max_angle', type=int, default=30, help='Maximum angle for the experiment (default: 30)')
+    parser.add_argument('--use_graph', action='store_true', help='Use graph representation (default: False)')
+    parser.add_argument('--seq_length', type=int, default=1, help='Sequence length for the experiment (default: 1)')
+    parser.add_argument('--batch_size', type=int, default=64, help='Batch size for the experiment (default: 64)')
+    parser.add_argument('--direct_lstm', action='store_true', help='Feed the PIGNN output directly to the LSTM (default: False)')
+    parser.add_argument('--use_all_data', action='store_true', help='Use all available training data (default: False)')
+    args = parser.parse_args()
 
-    # run(case_nr=1, wake_steering=False, max_angle=30, seq_length=1, output_size=128)
-    # run(case_nr=1, wake_steering=False, max_angle=90, seq_length=1, output_size=128)
-    # run(case_nr=1, wake_steering=False, max_angle=360, seq_length=1, output_size=128)
-
-    # run(case_nr=1, wake_steering=True, max_angle=30, seq_length=50, batch_size=4, output_size=128, use_all_data=False)
-    run(case_nr=1, wake_steering=False, max_angle=30, seq_length=50, batch_size=4, output_size=128, direct_lstm=True)
-    # run(case_nr=1, wake_steering=False, max_angle=30, seq_length=50, batch_size=4, output_size=128, direct_lstm=True)
-    # run(case_nr=1, wake_steering=True, max_angle=90, seq_length=1, output_size=128)
-    # run(case_nr=1, wake_steering=True, max_angle=360, seq_length=1, output_size=128)
+    run(case_nr=args.case_nr, wake_steering=args.wake_steering, max_angle=args.max_angle, use_graph=args.use_graph, 
+        seq_length=args.seq_length, batch_size=args.batch_size, direct_lstm=args.direct_lstm, use_all_data=args.use_all_data)
