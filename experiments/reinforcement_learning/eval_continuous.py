@@ -116,9 +116,9 @@ def plot_losses():
     Returns:
         None
     """
-    ddpg_data = pd.read_csv('DDPG_1.csv')
-    td3_data = pd.read_csv('TD3_1.csv')
-    sac_data = pd.read_csv('SAC_2.csv')
+    ddpg_data = pd.read_csv('results/DDPG_1.csv')
+    td3_data = pd.read_csv('results/TD3_1.csv')
+    sac_data = pd.read_csv('results/SAC_2.csv')
 
     ddpg_steps = ddpg_data.iloc[:, 1]
     ddpg_rewards = ddpg_data.iloc[:, 2]
