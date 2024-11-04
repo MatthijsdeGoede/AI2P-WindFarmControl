@@ -1,1 +1,0 @@
-{"case_nr": 1, "wake_steering": false, "max_angle": 30, "num_epochs": 300, "use_graph": true, "early_stop_after": 10, "batch_size": 4, "seq_length": 50, "direct_lstm": false, "output_size": 128, "dataset_dirs": ["../../data/Case_01/graphs/BL/30"]}
