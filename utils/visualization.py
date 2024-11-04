@@ -12,12 +12,15 @@ from utils.preprocessing import read_wind_speed_scalars
 
 def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case_01"):
     """
-    Creates an animation of one or two wind speed maps over time, in 5 second increments. Uses the preprocessed data.
-    Data is expected to be located in ./slices/Processed/BL/*_xxxxx.npy files, and contain the precomputed mean
-    absolute wind speed. xxxxx denotes the timestamp of the wind speed measurement in seconds.
-    @param start: Start timestamp to render from.
-    @param frames: Amount of frames to render, leave empty to render till the end.
-    @param comparison: Change to True if you want to create two plots, one with wake steering and one without.
+    Creates an animation of one or two wind speed maps over time, in 5 second increments.
+    Uses the preprocessed data located in ./slices/Processed/BL/*_xxxxx.npy files, containing the
+    precomputed mean absolute wind speed.
+
+    Args:
+        start (int): Start timestamp to render from.
+        frames (Optional[int]): Amount of frames to render, leave empty to render till the end.
+        comparison (bool): Change to True if you want to create two plots, one with wake steering and one without.
+        case (str): The case name to use for file paths.
     """
     if frames is None:
         dirs = os.listdir(f'../data/{case}/measurements_flow')
@@ -61,7 +64,14 @@ def animate_mean_absolute_speed(start, frames=None, comparison=False, case="Case
 
 
 def add_windmills(ax, layout_file, image_size=128):
-    # Create windmill layout
+    """
+    Adds windmill layout to the provided axis.
+
+    Args:
+        ax (plt.Axes): The axis to which the windmills will be added.
+        layout_file (str): CSV file path containing the windmill layout.
+        image_size (int): Size of the image for windmills.
+    """
     df = pd.read_csv(layout_file, sep=",", header=None)
     scale_factor = image_size / 5000
 
@@ -72,6 +82,13 @@ def add_windmills(ax, layout_file, image_size=128):
 
 
 def add_blades(ax, windmill_blades):
+    """
+   Adds blades to the windmills on the provided axis.
+
+   Args:
+       ax (plt.Axes): The axis to which the blades will be added.
+       windmill_blades (List[np.ndarray]): List of arrays representing the positions of windmill blades.
+   """
     for blade in windmill_blades:
         start = blade[0]
         end = blade[-1]
@@ -79,11 +96,31 @@ def add_blades(ax, windmill_blades):
 
 
 def add_quiver(ax, wind_vec, center):
+    """
+    Adds a quiver (arrow) representing wind direction to the provided axis.
+
+    Args:
+        ax (plt.Axes): The axis to which the quiver will be added.
+        wind_vec (np.ndarray): The wind vector.
+        center (float): The center point for the quiver arrow.
+    """
     ax.quiver(center, center, wind_vec[0], wind_vec[1],
               angles='xy', scale_units='xy', scale=1, color='red', label='Wind Direction')
 
 
 def add_imshow(fig, ax, umean_abs, color_bar=True):
+    """
+    Displays the mean absolute wind speed on the given axis.
+
+    Args:
+        fig (plt.Figure): The figure to which the image will be added.
+        ax (plt.Axes): The axis to plot on.
+        umean_abs (np.ndarray): The absolute wind speed data.
+        color_bar (bool): Whether to include a color bar.
+
+    Returns:
+        plt.imshow: The image object created.
+    """
     axesImage = ax.imshow(umean_abs, extent=(0, 128, 0, 128), origin='lower', aspect='equal', vmin=0, vmax=10)
     if color_bar:
         fig.colorbar(axesImage, ax=ax, label='Mean Velocity (UmeanAbs)')
@@ -91,6 +128,18 @@ def add_imshow(fig, ax, umean_abs, color_bar=True):
 
 
 def get_mean_absolute_speed_figure(umean_abs, wind_vec, layout_file=None, windmill_blades=None):
+    """
+    Creates a figure displaying the mean absolute wind speed, wind direction, and windmill layout.
+
+    Args:
+        umean_abs (np.ndarray): The absolute wind speed data.
+        wind_vec (np.ndarray): The wind vector data.
+        layout_file (Optional[str]): File for windmill layout (optional).
+        windmill_blades (Optional[List[np.ndarray]]): Blade configuration for windmills (optional).
+
+    Returns:
+        plt.Figure: The created figure.
+    """
     fig, ax = plt.subplots()
 
     add_imshow(fig, ax, umean_abs)
@@ -103,12 +152,14 @@ def get_mean_absolute_speed_figure(umean_abs, wind_vec, layout_file=None, windmi
 
 
 def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file=None, windmill_blades=None):
-    """"
-    Plots the mean absolute wind speed over the given grid
-    inputs:
-    umean_abs = the absolute wind speed data
-    x_axis = x value range of the grid
-    y_axis = y value range of the grid
+    """
+    Plots the mean absolute wind speed over the given grid.
+
+    Args:
+        umean_abs (np.ndarray): The absolute wind speed data.
+        wind_vec (np.ndarray): The wind vector data.
+        layout_file (Optional[str]): File for windmill layout (optional).
+        windmill_blades (Optional[List[np.ndarray]]): Blade configuration for windmills (optional).
     """
     fig, ax = plt.subplots()
     plot_mean_absolute_speed_subplot(ax, umean_abs, wind_vec, layout_file=layout_file, windmill_blades=windmill_blades)
@@ -118,12 +169,17 @@ def plot_mean_absolute_speed(umean_abs, wind_vec, layout_file=None, windmill_bla
 def plot_mean_absolute_speed_subplot(ax, umean_abs, wind_vec, layout_file=None, windmill_blades=None, color_bar=True):
     """
     Plots the mean absolute wind speed on a given axis.
-    Inputs:
-        ax = axis to plot on
-        umean_abs = the absolute wind speed data
-        wind_vec = wind vector data
-        layout_file = file for windmill layout (optional)
-        windmill_blades = blade configuration for windmills (optional)
+
+    Args:
+        ax (plt.Axes): Axis to plot on.
+        umean_abs (np.ndarray): The absolute wind speed data.
+        wind_vec (np.ndarray): The wind vector data.
+        layout_file (Optional[str]): File for windmill layout (optional).
+        windmill_blades (Optional[List[np.ndarray]]): Blade configuration for windmills (optional).
+        color_bar (bool): Whether to include a color bar.
+
+    Returns:
+        plt.imshow: The image object created.
     """
     img = add_imshow(ax.figure, ax, umean_abs, color_bar=color_bar)
     add_quiver(ax, wind_vec / 2, umean_abs.shape[0] / 2)
@@ -135,6 +191,15 @@ def plot_mean_absolute_speed_subplot(ax, umean_abs, wind_vec, layout_file=None, 
 
 
 def plot_graph(G, wind_vec, max_angle=90, ax=None):
+    """
+    Plots a directed graph with nodes and edges representing the wind turbines.
+
+    Args:
+        G (nx.Graph): The graph to plot.
+        wind_vec (np.ndarray): The wind vector data.
+        max_angle (float): Maximum angle for the arrows in the plot.
+        ax (Optional[plt.Axes]): The axis to plot on, if None a new axis will be created.
+    """
     pos_dict = nx.get_node_attributes(G, 'pos')
 
     # Use the axis if provided, otherwise use the current figure
@@ -164,6 +229,15 @@ def plot_graph(G, wind_vec, max_angle=90, ax=None):
 
 
 def plot_prediction_vs_real(predicted, target, case=1, number=0):
+    """
+    Plots the predicted wind speed versus the target wind speed.
+
+    Args:
+        predicted (np.ndarray): The predicted wind speed data.
+        target (np.ndarray): The target wind speed data.
+        case (int, optional): Case number to determine windmill layout file. Defaults to 1.
+        number (int, optional): Number for saving the plot file. Defaults to 0.
+    """
     layout_file = get_layout_file(case)
 
     fig, axs = plt.subplots(1, 2, figsize=(12, 6))  # 1 row, 2 columns
@@ -190,6 +264,14 @@ def plot_prediction_vs_real(predicted, target, case=1, number=0):
 
 
 def animate_prediction_vs_real(umean_callback, n_frames=100, file_path="animation"):
+    """
+    Creates an animation comparing the predicted and target wind speed over frames.
+
+    Args:
+        umean_callback (Callable[[int], Tuple[np.ndarray, np.ndarray]]): Function that returns target and predicted wind speeds given a frame index.
+        n_frames (int, optional): Number of frames for the animation. Defaults to 100.
+        file_path (str, optional): Path to save the animation file. Defaults to "animation".
+    """
     fig, axs = plt.subplots(1, 2, figsize=(12, 6))
     target, prediction = umean_callback(0)
     axis_image_target = add_imshow(fig, axs[0], target)
@@ -207,5 +289,14 @@ def animate_prediction_vs_real(umean_callback, n_frames=100, file_path="animatio
 
 
 def get_layout_file(case):
+    """
+    Retrieves the layout file path for wind turbines based on the case number.
+
+    Args:
+        case (int): The case number to determine the layout file.
+
+    Returns:
+        str: The file path of the layout CSV.
+    """
     turbines = "12_to_15" if case == 1 else "06_to_09" if case == 2 else "00_to_03"
     return f"../../data/Case_0{case}/HKN_{turbines}_layout_balanced.csv"

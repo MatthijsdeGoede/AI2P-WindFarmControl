@@ -4,6 +4,7 @@ import torch
 from architecture.unet.unet_parts import *
 from torch import nn
 
+
 class CustomUNet(nn.Module):
     """
     A custom U-Net architecture for image segmentation tasks, allowing flexibility in

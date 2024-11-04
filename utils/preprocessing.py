@@ -1,30 +1,60 @@
 import os
 from multiprocessing import Pool
-
 import networkx as nx
 import numpy as np
 import pandas as pd
 import torch
-
 from numpy.linalg import norm
 from scipy.interpolate import griddata
-
 from skimage.transform import resize
 
 
 class MultiThread:
+    """
+    A class for processing VTK files in parallel to extract wind speed data.
+
+    Attributes:
+        case (int): The case number for the simulation.
+        type (str): The type of the simulation (wake-steering or greedy).
+        working_dir (str): The directory where VTK files are stored.
+    """
+
     def __init__(self, case, type):
+        """
+        Initializes the MultiThread instance with case information and directory setup.
+
+        Args:
+            case (int): The case number (e.g., 1, 2, etc.).
+            type (str): The type of the simulation (wake-steering or greedy).
+        """
         self.case = case
         self.type = type
         self.working_dir = f'../data/Case_0{self.case}/measurements_flow/postProcessing_{self.type}'
 
     def compute(self, index):
+        """
+        Computes the mean absolute wind speed from the specified VTK file index.
+
+        Args:
+            index (str): The index of the VTK file to process.
+
+        Saves:
+            The computed wind speed map as a NumPy file in the designated directory.
+        """
         umean_abs, _, _ = vtk_to_umean_abs(f'{self.working_dir}/sliceDataInstantaneous/{index}/U_slice_horizontal.vtk')
         np.save(f'{self.working_dir}/windspeedMapScalars/Windspeed_map_scalars_{index}', umean_abs)
         print(f'Processed {index}')
 
 
 def preprocess_vtk_files(case, type, overwrite=True):
+    """
+    Preprocesses VTK files by extracting wind speed data and saving it as NumPy arrays.
+
+    Args:
+        case (int): The case number for the simulation.
+        type (str): The type of the simulation (wake-steering or greedy).
+        overwrite (bool, optional): If True, overwrite existing files; otherwise, skip existing ones.
+    """
     working_dir = f'../data/Case_0{case}/measurements_flow/postProcessing_{type}/sliceDataInstantaneous'
     dirs = set(os.listdir(working_dir))
 
@@ -42,14 +72,16 @@ def preprocess_vtk_files(case, type, overwrite=True):
 
 def import_vtk(file):
     """
-    Imports standard SOWFA vtk files
-    [data_type,cell_centers,cell_data] = import_vTK(file)
+    Imports data from standard SOWFA VTK files.
 
-    input: file = location of vtk-file
-    outputs:
-    data_type = OpenFOAM label of measurement (e.g. U, Umean, have not tested for several measurements)
-    cell_centers = locations of sampling (x,y,z)
-    cell_data = sampling values (could be vectors (rows))
+    Args:
+        file (str): The file path of the VTK file to be imported.
+
+    Returns:
+        tuple: Contains the following:
+            - data_type (list): The measurement labels (e.g., U, Umean).
+            - cell_centers (np.ndarray): Locations of sampling points in 3D space.
+            - cell_data (np.ndarray): Sampling values (could be vectors).
     """
     data_type = []
     cell_data = []
@@ -114,14 +146,16 @@ def import_vtk(file):
 
 def vtk_to_umean_abs(file):
     """
-    Imports standard SOWFA vtk files and calculates the interpolated mean absolute wind speed over the grid
-    [umean_abs,x_axis,y_axis] = vtk_to_umean_abs(file)
+    Imports standard SOWFA VTK files and calculates the interpolated mean absolute wind speed.
 
-    input: file = location of vtk-file
-    outputs:
-    u_mean_abs = interpolated mean absolute wind speed over the grid
-    x_axis = x value range of the grid
-    y_axis = y value range ofthe grid
+    Args:
+        file (str): The file path of the VTK file to be processed.
+
+    Returns:
+        tuple: Contains the following:
+            - umean_abs (np.ndarray): The interpolated mean absolute wind speed over a grid.
+            - x_axis (np.ndarray): The x-values of the grid.
+            - y_axis (np.ndarray): The y-values of the grid.
     """
     # Import the vtk file
     data_type, cell_centers, cell_data = import_vtk(file)
@@ -137,41 +171,131 @@ def vtk_to_umean_abs(file):
 
 
 def read_wind_speed_scalars(type, i, case):
+    """
+    Reads wind speed scalar data from a NumPy file.
+
+    Args:
+        type (str): The type of the simulation (wake-steering or greedy).
+        i (int): The index of the wind speed map file.
+        case (int): The case number.
+
+    Returns:
+        np.ndarray: The loaded wind speed data.
+    """
     return np.load(f'../data/{case}/measurements_flow/{type}/windspeedMapScalars/Windspeed_map_scalars_{i}.npy')
 
 
 def angle_to_vec(wind_angle):
+    """
+    Converts a wind angle in degrees to a 2D unit vector.
+
+    Args:
+        wind_angle (float): The wind angle in degrees.
+
+    Returns:
+        np.ndarray: The corresponding unit vector.
+    """
     angle_radians = np.deg2rad(wind_angle)
     return np.array([np.cos(angle_radians), np.sin(angle_radians)])
 
 
 def correct_angles(angles):
+    """
+    Corrects wind angles to ensure they are within the range [0, 360).
+
+    Args:
+        angles (np.ndarray): Array of wind angles.
+
+    Returns:
+        np.ndarray: Corrected wind angles in the range [0, 360).
+    """
     return (angles * -1 + 270) % 360
 
 
 def read_wind_angles(file):
+    """
+    Reads wind angles from a CSV file.
+
+    Args:
+        file (str): The path to the CSV file containing wind angles.
+
+    Returns:
+        np.ndarray: Array of wind angles, corrected to the range [0, 360).
+    """
     angles = np.genfromtxt(file, delimiter=",") * np.array([1, -1]) + np.array([0, 270])
     return np.mod(angles, [np.inf, 360])
 
 
 def get_wind_vec_at_time(wind_angles, timestep):
+    """
+    Retrieves the wind vector at a specific timestep.
+
+    Args:
+        wind_angles (np.ndarray): Array of wind angles at different timesteps.
+        timestep (float): The timestep for which to retrieve the wind vector.
+
+    Returns:
+        np.ndarray: The unit vector representing the wind direction at the specified timestep.
+    """
     return angle_to_vec(wind_angles[wind_angles[:, 0] <= timestep][-1, 1])
 
 
 def get_wind_angles_for_range(file, custom_range, start_ts):
+    """
+    Gets wind angles for a range of timesteps.
+
+    Args:
+        file (str): The file path to read wind angles from.
+        custom_range (np.ndarray): Array of timesteps to evaluate.
+        start_ts (float): The starting timestep reference.
+
+    Returns:
+        np.ndarray: Array of wind angles corresponding to the specified timesteps.
+    """
     wind_angles = read_wind_angles(file)
     return np.array([wind_angles[wind_angles[:, 0] < timestep - start_ts][-1, 1] for timestep in custom_range])
 
 
 def read_turbine_positions(file):
+    """
+    Reads turbine positions from a CSV file.
+
+    Args:
+        file (str): The file path to the CSV file containing turbine positions.
+
+    Returns:
+        np.ndarray: An array of turbine positions in 2D space (x, y).
+    """
     return np.genfromtxt(file, delimiter=",")[:, :2]
 
 
 def get_angle_between_vec(v1, v2):
+    """
+    Calculates the angle between two vectors in degrees.
+
+    Args:
+        v1 (np.ndarray): The first vector.
+        v2 (np.ndarray): The second vector.
+
+    Returns:
+        float: The angle between the two vectors in degrees.
+    """
     return np.degrees(np.arccos(np.clip(np.dot(v1, v2) / (norm(v1) * norm(v2)), -1.0, 1.0)))
 
 
 def create_turbine_nx_graph(pos, wind_vec, max_angle=90, max_dist=np.inf):
+    """
+    Creates a directed graph representing turbine interactions based on wind vectors.
+
+    Args:
+        pos (np.ndarray): Array of turbine positions.
+        wind_vec (np.ndarray): The wind vector direction.
+        max_angle (float, optional): Maximum angle for turbines to affect each other.
+        max_dist (float, optional): Maximum distance for turbines to affect each other.
+
+    Returns:
+        nx.DiGraph: A directed graph with nodes and edges representing turbine interactions.
+    """
     G = nx.DiGraph()
     num_turbines = pos.shape[0]
     for i in range(num_turbines):
@@ -191,6 +315,20 @@ def create_turbine_nx_graph(pos, wind_vec, max_angle=90, max_dist=np.inf):
 
 
 def create_turbine_graph_tensors(pos, wind_vec, max_angle=90, max_dist=np.inf):
+    """
+    Creates graph tensors for turbine interactions based on wind vectors.
+
+    Args:
+        pos (np.ndarray): Array of turbine positions.
+        wind_vec (np.ndarray): The wind vector direction.
+        max_angle (float, optional): Maximum angle for turbines to affect each other.
+        max_dist (float, optional): Maximum distance for turbines to affect each other.
+
+    Returns:
+        tuple: Contains two tensors:
+            - torch.Tensor: Source and destination nodes for edges.
+            - torch.Tensor: Edge features.
+    """
     num_turbines = pos.shape[0]
     src_nodes = []
     dst_nodes = []
@@ -210,6 +348,19 @@ def create_turbine_graph_tensors(pos, wind_vec, max_angle=90, max_dist=np.inf):
 
 
 def calculate_wake_distances(turb_vec, wind_vec, angle=None):
+    """
+    Calculates the wake distances based on turbine vector and wind vector.
+
+    Args:
+        turb_vec (np.ndarray): The vector from turbine i to turbine j.
+        wind_vec (np.ndarray): The wind vector direction.
+        angle (float, optional): The angle between the two vectors (degrees).
+
+    Returns:
+        tuple: Contains the following:
+            - float: Radial distance.
+            - float: Downstream distance.
+    """
     if angle is None:
         angle = get_angle_between_vec(turb_vec, wind_vec)
     angle_rad = np.deg2rad(angle)
@@ -220,6 +371,16 @@ def calculate_wake_distances(turb_vec, wind_vec, angle=None):
 
 
 def read_measurement(folder, measurement):
+    """
+    Reads measurement data from a specified file and pivots it into a usable format.
+
+    Args:
+        folder (str): The directory where the measurement file is located.
+        measurement (str): The measurement file name.
+
+    Returns:
+        np.ndarray: The pivoted measurement data as a NumPy array.
+    """
     dtypes = {
         "Turbine": int,
         "Time": float,
@@ -235,10 +396,30 @@ def read_measurement(folder, measurement):
 
 
 def resize_windspeed(windspeed_map, output_shape):
+    """
+    Resizes a wind speed map to a specified output shape.
+
+    Args:
+        windspeed_map (np.ndarray): The original wind speed map.
+        output_shape (tuple): The desired output shape (height, width).
+
+    Returns:
+        np.ndarray: The resized wind speed map.
+    """
     return resize(windspeed_map, output_shape)
 
 
 def get_yaws(case, type):
+    """
+    Retrieves nacelle yaw angles for turbines and corrects them based on wind angles.
+
+    Args:
+        case (int): The case number for the simulation.
+        type (str): The type of the simulation (wake-steering or greedy).
+
+    Returns:
+        np.ndarray: Corrected nacelle yaw angles.
+    """
     yaws = read_measurement(f"../data/Case_0{case}/measurements_turbines/30000_{type}/", "nacYaw")
 
     turbines = "12_to_15" if case == 1 else "06_to_09" if case == 2 else "00_to_03"
