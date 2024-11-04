@@ -165,7 +165,7 @@ class PhysicsInducedAttention(nn.Module):
         down_stream_effect = alpha * torch.pow((r0 / denom), 2)
         radial_input = -torch.pow((r / denom), 2)
 
-        radial_effect = self.power_approx(radial_input, degree) if self.use_approx else torch.exp(radial_input)
+        radial_effect = self.power_approx(radial_input, degree) if self.use_approx else torch.exp(-torch.pow((r / denom), 2))
         interacting_coeiff = down_stream_effect * radial_effect
 
         return interacting_coeiff
@@ -276,7 +276,7 @@ class PIGN(nn.Module):
             radial_dist, down_stream_dist = ef[:, 0], ef[:, 1]
             attn_input = torch.cat([down_stream_dist, radial_dist], dim=-1)
             weights = self.attention_model(attn_input)
-            updated_ef *= weights
+            updated_ef = updated_ef * weights
 
         return updated_ef
 
@@ -298,7 +298,7 @@ class PIGN(nn.Module):
         updated_nf = self.node_model(nm_input)
 
         if self.residual:
-            updated_nf += nf
+            updated_nf = updated_nf + nf
 
         return updated_nf
 
@@ -318,6 +318,6 @@ class PIGN(nn.Module):
         updated_gf = self.global_model(gm_input)
 
         if self.residual:
-            updated_gf += gf
+            updated_gf = updated_gf + gf
 
         return updated_gf

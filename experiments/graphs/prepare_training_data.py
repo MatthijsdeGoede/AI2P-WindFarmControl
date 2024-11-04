@@ -11,6 +11,14 @@ from skimage.transform import resize
 
 
 def prepare_graph_training_data(case_nr=1, wake_steering=False, max_angle=30):
+    """
+    Prepares graph training data by creating graph data objects for each timestep in the simulation.
+
+    Args:
+        case_nr (int, optional): The case number for the simulation. Defaults to 1.
+        wake_steering (bool, optional): Flag indicating whether to use wake steering data. Defaults to False.
+        max_angle (int, optional): Maximum angle to consider for turbine interactions. Defaults to 30.
+    """
     map_size = 128
     type = "LuT2deg_internal" if wake_steering else "BL"
     start_ts = 30000

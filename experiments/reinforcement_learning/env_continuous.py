@@ -22,9 +22,40 @@ device = torch.device("cpu")
 
 
 class ContinuousTurbineEnv(gym.Env):
+    """
+    Continuous Turbine Environment for simulating wind turbine operations.
+
+    This environment models a scenario where multiple wind turbines can adjust their yaw angles
+    to optimize power output based on wind direction and speed. The environment interacts with
+    a wind speed map prediction model and provides a reinforcement learning framework for training agents.
+
+    Attributes:
+        metadata (dict): Metadata including rendering modes and frames per second.
+        turbine_locations (torch.Tensor): Locations of the wind turbines.
+        n_turbines (int): Number of turbines.
+        map_size (int): Size of the wind speed map.
+        model (FlowPIGNN): Model used to predict the wind speed map.
+        wind_speed_extractor (WindSpeedExtractor): Extractor for wind speeds at turbine locations.
+        _wind_direction (list): Current wind direction.
+        _yaws (np.ndarray): Current yaw angles for the turbines.
+        observation_space (spaces.Dict): Space defining the observations available to the agent.
+        action_space (spaces.Box): Space defining the action space for yaw angle adjustments.
+        _last_wind_speed (Optional[float]): Last calculated wind speed.
+        render_mode (Optional[str]): Mode for rendering the environment.
+    """
     metadata = {"render_modes": ["rgb_array", "matplotlib"], "render_fps": 4}
 
     def __init__(self, wind_speed_map_model, turbine_locations, render_mode=None, map_size=128, max_yaw=30):
+        """
+        Initializes the Continuous Turbine Environment.
+
+        Args:
+            wind_speed_map_model (FlowPIGNN): The model used to predict the wind speed map.
+            turbine_locations (np.ndarray): Array containing the (x, y) locations of each turbine.
+            render_mode (Optional[str]): The mode to render the environment (default: None).
+            map_size (int): The size of the wind speed map (default: 128).
+            max_yaw (int): The maximum yaw adjustment angle for the turbines (default: 30).
+        """
         self.turbine_locations = torch.tensor(turbine_locations)
         self.n_turbines = len(turbine_locations)
         self.map_size = map_size
@@ -60,17 +91,39 @@ class ContinuousTurbineEnv(gym.Env):
         self.render_mode = render_mode
 
     def _get_obs(self):
+        """
+        Retrieves the current observation of the environment.
+
+        Returns:
+            dict: A dictionary containing the current wind direction and yaw angles.
+        """
         return {
             "wind_direction": self._wind_direction,
             "yaws": self._yaws,
         }
 
     def _get_info(self):
+        """
+        Retrieves additional information from the environment.
+
+        Returns:
+            dict: A dictionary containing the last calculated wind speed.
+        """
         return {
             "wind_speed": self._last_wind_speed
         }
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
+        """
+        Resets the environment to an initial state.
+
+        Args:
+            seed (Optional[int]): Seed for random number generation (default: None).
+            options (Optional[dict]): Options for resetting the environment (default: None).
+
+        Returns:
+            tuple: A tuple containing the initial observation and additional info.
+        """
         super().reset(seed=seed)
 
         if options is None:
@@ -94,6 +147,15 @@ class ContinuousTurbineEnv(gym.Env):
         return observation, info
 
     def step(self, action):
+        """
+        Takes a step in the environment based on the provided action.
+
+        Args:
+           action (np.ndarray): The action taken by the agent, representing new yaw angles.
+
+        Returns:
+           tuple: A tuple containing the observation, reward, done flag, truncated flag, and additional info.
+        """
         # Convert actions to actual yaw values
         yaws = self._action_to_yaw(action, self._wind_direction[0])
 
@@ -114,6 +176,15 @@ class ContinuousTurbineEnv(gym.Env):
         return observation, np.sum(power), False, False, info
 
     def predict_wind_speed_map(self, yaws):
+        """
+        Predicts the wind speed map based on the current yaw angles.
+
+        Args:
+            yaws (np.ndarray): The current yaw angles for the turbines.
+
+        Returns:
+            tuple: A tuple containing the predicted wind speed map and the wind vector.
+        """
         x = torch.tensor(yaws).reshape(-1, 1).float()
         pos = self.turbine_locations
         wind_vec = angle_to_vec(self._wind_direction[0])
@@ -132,10 +203,22 @@ class ContinuousTurbineEnv(gym.Env):
         return wind_speed_map, wind_vec
 
     def render(self):
+        """
+        Renders the environment based on the current render mode.
+
+        Returns:
+            Optional[np.ndarray]: The rendered frame if applicable.
+        """
         if self.render_mode == "rgb_array" or self.render_mode == "matplotlib":
             return self._render_frame()
 
     def _render_frame(self):
+        """
+        Renders a single frame of the wind speed map with current yaw angles.
+
+        Returns:
+            Optional[np.ndarray]: The rendered figure if in matplotlib mode.
+        """
         # Render a wind speed map with current yaws
         # Convert actions to actual yaw values
         wind_speed_map, wind_vec, turbine_pixels = self.get_render_info()
@@ -146,6 +229,12 @@ class ContinuousTurbineEnv(gym.Env):
         return
 
     def get_render_info(self):
+        """
+        Gathers information required for rendering.
+
+        Returns:
+            tuple: A tuple containing the wind speed map, wind vector, and turbine pixel locations.
+        """
         yaws = self._action_to_yaw(self._yaws, self._wind_direction[0])
         wind_speed_map, wind_vec = self.predict_wind_speed_map(yaws)
         turbine_pixels = []
@@ -155,6 +244,18 @@ class ContinuousTurbineEnv(gym.Env):
 
 
 def create_env(case=1, max_episode_steps=100, render_mode="matplotlib", map_size=(128, 128)):
+    """
+    Creates and initializes the continuous turbine environment.
+
+    Args:
+        case (int): The case number to define turbine layout (default: 1).
+        max_episode_steps (int): Maximum number of steps per episode (default: 100).
+        render_mode (str): Mode for rendering the environment (default: "matplotlib").
+        map_size (tuple): Size of the map for the environment (default: (128, 128)).
+
+    Returns:
+        gym.Env: The initialized environment.
+    """
     model_cfg = get_pignn_config()
     deconv_model = DeConvNet(1, [64, 128, 256, 1], output_size=map_size[0])
     model = FlowPIGNN(**model_cfg, deconv_model=deconv_model)
